@@ -1,6 +1,6 @@
 # GridLens NZ — Design 1 idea brief
 
-**Artifact version:** 0.4 draft
+**Artifact version:** 0.5 draft
 **Status:** Awaiting Gate 1 approval
 **Prepared:** 2026-08-06 (Pacific/Auckland)
 
@@ -14,9 +14,9 @@ It is an early-stage investigation tool, not a consent decision, engineering stu
 
 The product has been re-framed from the beginning because the user materially expanded the previously approved three-region, prepared-data-only MVP.
 
-| Precedence | Source | Role in version 0.4 |
+| Precedence | Source | Role in version 0.5 |
 |---:|---|---|
-| 1 | Current explicit user directions | Normative. They add whole-NZ support, device-cached user credentials, a custom OpenAI-compatible agent endpoint, read-only web-index MCP/REST research, a prompt workspace, and safe dynamic visualisations. |
+| 1 | Current explicit user directions | Normative. They require a working near-production-quality prototype: visible and clickable whole-NZ region geometry and markers, operator-managed demo credentials with no end-user key/endpoint workflow, real OpenAI-compatible and Tavily-backed operations, a prompt workspace, and safe dynamic visualisations. |
 | 2 | `Shared/GridLens NZ.md` | Normative foundation for the core product, deterministic calculations, assessments, traceability, and eventual architecture/software design. |
 | 3 | `C:/Users/kang/Downloads/GridLens_NZ_Hackathon_Transcript.md` | Approved additive product input from Daniel: People/Planet framing, public and decision-maker perspectives, legislation/consent research, comparable projects, company track record, public discourse, conversational education, alternative-site exploration, and refreshable research. It does not override deterministic rules or select the architecture. |
 | 4 | `C:/Users/kang/Downloads/Description.md` | User-supplied elaboration to borrow from selectively. Adopted product patterns are recorded below; proposed backend/model-training choices remain non-binding until their gates. |
@@ -35,18 +35,18 @@ Different audiences need different presentations of the same traceable record:
 - developers want to compare design choices, flexibility, cooling, staging, backup generation, and candidate locations;
 - researchers and curators need a reproducible evidence trail with freshness, licensing, spatial coverage, and version history.
 
-A generic chatbot alone cannot safely provide this. GridLens NZ therefore keeps calculations and assessment policy deterministic while letting an explicitly configured LLM/MCP agent search, explain, compare, question, and propose visualisations around those authoritative results.
+A generic chatbot alone cannot safely provide this. GridLens NZ therefore keeps calculations and assessment policy deterministic while letting an operator-configured LLM/MCP agent search, explain, compare, question, and propose visualisations around those authoritative results.
 
 ## Product principles
 
 1. **One evidence record, multiple views.** Public/decision-maker audience modes and People/Planet lenses change presentation, not facts.
 2. **Deterministic authority.** Formula outputs, category outcomes, provenance states, and warnings are computed by validated application logic. AI cannot overwrite them.
 3. **AI is broad but visibly interpretive.** The agent is available throughout the workflow for research, extraction, explanation, comparison, question generation, and visualisation, with citations and an AI label.
-4. **Whole-NZ selection without false uniformity.** All 16 regional council areas plus Chatham Islands / Stats NZ “Area Outside Region” are selectable. Each data category reports its real coverage; national fallback context is labelled rather than presented as local fact.
+4. **Whole-NZ selection without false uniformity.** Pinned regional polygons and visible markers make all 16 regional council areas plus Chatham Islands / Stats NZ “Area Outside Region” genuinely selectable by map and accessible list. Each data category reports its real coverage; national fallback context is labelled rather than presented as local fact.
 5. **People and Planet.** People covers price/cost context, employment, community concerns, public services, legislation, and consent process. Planet covers energy, carbon, water, cooling, resilience, land, and environmental context.
 6. **No hidden overall score.** The product presents evidence-qualified category outcomes and trade-offs, never a single suitability number or automated approval/rejection.
-7. **Browser-direct and user-controlled.** Design 1 has no app-owned credential relay or application database. Runtime external calls are made only to HTTPS endpoints that pass browser CORS checks, or by the user’s selected model provider through an explicitly configured read-only remote MCP tool.
-8. **Local persistence is disclosed.** Credentials and user-saved work survive refresh on the same browser, but are not cloud-synced. Shared-device and malicious-script risks are explained.
+7. **Zero-credential user experience with a narrow server boundary.** Ordinary users never enter or receive provider credentials/endpoints. The browser uses versioned same-origin routes; the server contacts only operator-configured allowlisted AI/research providers and is not a general proxy.
+8. **Local persistence is disclosed.** User-saved scenarios, preferences, caches, and optional prompt history may survive refresh on the same browser, but provider credentials are never browser state and user data is not cloud-synced.
 9. **Safe visual generation.** The LLM may produce a validated chart/map/table specification; it cannot inject executable HTML, JavaScript, or arbitrary styling.
 10. **Source terms matter.** Attribution, licence, access limits, permitted purpose, update cadence, and publisher authority are stored with each source adapter and evidence item.
 
@@ -142,11 +142,11 @@ Research was limited to primary/official documentation where possible. “Free�
 
 ## Success measures for the revised MVP
 
-1. Every one of the 16 regional council areas and Chatham Islands / Area Outside Region can be selected by map and accessible list.
+1. Pinned Stats NZ regional polygons and visible project/candidate markers render at the national starting view; every one of the 16 regional council areas and Chatham Islands / Area Outside Region can be selected by polygon click/tap, marker, and accessible list.
 2. Deterministic scenario calculations work for every selected geography; evidence-dependent categories expose `complete`, `partial`, `stale`, `missing`, or `failed` coverage without fabricated local precision.
 3. The Southland 50 MW demonstration still produces exactly 65 MW facility demand, 455.52 GWh annual energy, and 19.5 MW maximum flexible load before display rounding.
-4. User-entered LLM and MCP credentials survive a refresh on the same browser after a successful first use, remain masked, never enter logs/exports, and can be cleared per connector or all at once.
-5. Non-CORS endpoints are blocked from direct browser use with a clear explanation and are never silently relayed through an application server.
+4. The local hackathon demo derives operator configuration from ignored `TEST.md`; the hosted demo uses Sites runtime secrets; no ordinary user enters a key or endpoint and exact secret canaries never reach source, client bundles, responses, browser storage, logs, or exports.
+5. Same-origin agent/research routes accept only bounded typed operations and contact only fixed operator-configured HTTPS providers; arbitrary endpoints, methods, headers, models, and tools are rejected.
 6. Deterministic results remain fully usable without AI, MCP, or live data.
 7. The agent can answer a cited question from the current scenario, perform Tavily-backed research when configured, and generate at least one accessible schema-validated visualisation without executing model-authored code.
 8. Public and decision-maker audience modes and People/Planet lenses preserve the same underlying values, evidence, provenance, and uncertainty.
@@ -159,8 +159,8 @@ Research was limited to primary/official documentation where possible. “Free�
 
 - All Design 1 files remain under `design-1-browser-first/`; `Shared/` remains read-only.
 - OpenAI Sites remains the target hosting surface.
-- Design 1 remains browser-first with no app-owned credential relay, user database, or privileged server-side secret store.
-- Direct runtime calls are limited to explicit HTTPS endpoints that pass browser CORS and connector policy checks.
+- Design 1 retains a map-first browser experience with no user database; privileged behavior is limited to a narrow same-origin AI/research adapter backed by operator-managed runtime secrets.
+- Browser public-data calls remain explicit/CORS-compatible or use pinned assets. Provider calls occur only server-side to fixed HTTPS destinations.
 - The custom model endpoint may implement Responses API, Chat Completions, both, or neither; capabilities must be tested rather than assumed.
 - Remote MCP use is read-only and allowlisted. No external write/action tool is part of this MVP.
 - AI output is untrusted data. It cannot execute code, mutate deterministic results, change evidence authority, or issue a formal recommendation.
@@ -168,6 +168,6 @@ Research was limited to primary/official documentation where possible. “Free�
 
 ## Gate 1 scope boundary
 
-The core Gate 1 scope includes the whole-NZ Map Explorer, a prepared Project Case File, scenario calculations, data-coverage reporting, People/Planet and audience views, device-local credentials, custom model endpoint, Tavily-compatible research, conversational prompting, safe dynamic visualisation, comparisons, evidence traceability, and impact brief.
+The core Gate 1 scope includes the whole-NZ polygon-and-marker Map Explorer, a prepared Project Case File, scenario calculations, data-coverage reporting, People/Planet and audience views, operator-managed model/Tavily/MCP configuration, same-origin agent/research routes, conversational prompting, safe dynamic visualisation, comparisons, evidence traceability, and impact brief.
 
 Local proposal/PDF ingestion, representative community-feedback collection, authenticated cloud collaboration, app-owned server persistence, and PDF export are stretch/deferred capabilities unless separately promoted at a later gate.

@@ -1,10 +1,10 @@
 # GridLens NZ — Whole-system contracts
 
-**Artifact version:** 0.10 draft
+**Artifact version:** 0.12 draft
 **Status:** Phase 4 design; awaiting independent Gate 3 validation
-**Approved baseline:** Requirements 0.4, Usage Definition 0.4, Architecture 0.3 Option A
+**Approved baseline:** Requirements 0.5, Usage Definition 0.5, Architecture 0.4 Option A
 
-**Normative precedence:** the v0.10 reconciliation at the end of this artifact supersedes any earlier v0.4/v0.5/v0.6/v0.7/v0.8/v0.9 field or rule with which it conflicts.
+**Normative precedence:** the v0.12 reconciliation at the end of this artifact is the only effective browser/server schema graph. It supersedes conflicting v0.4–v0.11 connector, vault, provider, map-selection, route, source-registry, and research-cache rules. Historical V2 types remain design history only unless v0.12 explicitly imports a named deterministic type.
 
 ## Contract principles
 
@@ -4153,3 +4153,898 @@ A sensitive endpoint label is generated only from its normalized origin or from 
 | G3V09-001 | Shared per-outbound authorization transition, request-frozen tool routes and separate accepted/contacted receipt sets |
 | G3V09-002 | Pre-allocation alias lookup with distinct request/replay/reject counters and one receipt per new logical call |
 | G3V09-003 | Closed question scope/subject matrix with brief hashes removed from subject identity |
+
+## Version 0.11 reconciliation — selectable regions and operator-managed providers
+
+This section is normative. It replaces the browser credential vault, user connector configuration, direct-CORS model/Tavily/MCP routing, destination-acceptance, per-connector clear, and no-server-relay portions of earlier versions. Historical types remain documentation only and shall not be imported by production v0.11 code.
+
+### CTR-023 — Pinned regional geometry
+
+```text
+type RegionIdV3 = "01"|"02"|"03"|"04"|"05"|"06"|"07"|"08"|"09"|
+                  "12"|"13"|"14"|"15"|"16"|"17"|"18"|"99"
+
+type RegionFeaturePropertiesV3 = exact {
+  regionId: RegionIdV3
+  name: NonEmptyString<=80
+  sourceField: "REGC_code"
+  sourceNameField: "REGC_name"
+}
+
+type RegionFeatureCollectionV3 = exact {
+  type: "FeatureCollection"
+  features: NonEmptyArray<GeoJsonPolygonOrMultiPolygon<RegionFeaturePropertiesV3>>
+}
+
+type RegionAssetManifestV1 = exact {
+  schemaVersion: "gridlens.region-asset.v1"
+  edition: "Stats NZ Regional Council 2023 (generalised), 12 nautical miles"
+  sourceDatasetUrl: "https://datafinder.stats.govt.nz/layer/111182-regional-council-2023-generalised/"
+  distributionUrl: "https://services.arcgis.com/XTtANUDT8Va4DLwI/arcgis/rest/services/Regional_Council_Boundary/FeatureServer/0"
+  licence: NonEmptyString<=160
+  generatedAt: Instant
+  geometryPrecision: Integer[4..6]
+  sha256: LowerHex64
+  featureCount: 17
+  regionIds: ExactSet<RegionIdV3>
+}
+```
+
+Producer: build-time spatial preparation from the pinned Stats NZ dataset through the named Eagle Technology ArcGIS distribution. Consumers: map asset loader, selection resolver, accessible region index, package validator, QA. The preparation step normalizes the source `REGC_code` values `1`–`9` to canonical two-character IDs `01`–`09` and retains `12`–`18` and `99`; no other code transformation is permitted. The raw prepared GeoJSON byte hash must equal `sha256` before it becomes selectable. Feature IDs and `properties.regionId` are identical. Unknown, duplicate, empty, malformed, unclosed, non-polygon, missing-99, missing-main-region, or out-of-NZ-coordinate features reject the entire geometry generation; no nearest-region fallback is created.
+
+### CTR-024 — Map load and canonical selection
+
+```text
+type AssetStateV1 =
+  | { state:"idle" }
+  | { state:"loading"; startedAt:Instant }
+  | { state:"ready"; version:NonEmptyString; count:PositiveInteger; readyAt:Instant }
+  | { state:"failed"; publicCode:MapPublicErrorCode; retryable:boolean }
+
+type MapReadinessV1 = exact {
+  basemap: AssetStateV1
+  regions: AssetStateV1
+  markers: AssetStateV1
+  interactive: boolean
+}
+
+type SelectionSourceV3 = polygon_pointer|polygon_keyboard|marker_pointer|
+                         marker_keyboard|accessible_list|search|coordinate|restore
+
+type SelectRegionCommandV3 = exact {
+  operationId: OperationId
+  regionId: RegionIdV3
+  source: SelectionSourceV3
+  selectedSiteId?: SiteId
+  candidatePoint?: Wgs84Point
+}
+
+type RegionSelectionV3 = exact {
+  regionId: RegionIdV3
+  source: SelectionSourceV3
+  selectedSiteId?: SiteId
+  candidatePoint?: Wgs84Point
+  geometryEdition: NonEmptyString
+  selectedAt: Instant
+}
+```
+
+Producer: map controller or accessible list/search/coordinate adapter. Consumers: application selection store, MapLibre renderer, scenario panel, deterministic evaluator, prompt-context projector. All paths dispatch `SelectRegionCommandV3`; no UI path mutates selection independently. Marker activation sets both its `selectedSiteId` and owning `regionId`. Polygon activation clears a site selection unless the selected site remains inside the activated region. The latest operation generation wins; stale map events cannot replace a newer list/search selection.
+
+`interactive=true` requires `regions.state=ready` and at least one canonical selection path. Basemap failure never sets `interactive=false`. Marker failure is visible and does not disable polygons/list. Region failure disables polygon/coordinate resolution but the static accessible index may still select a known RegionId with a qualified geometry-unavailable state.
+
+### CTR-025 — Operator provider configuration (server-only)
+
+```text
+type SecretString = opaque server-only non-serializable string
+
+type OperatorProviderConfigV1 = server-only exact {
+  model: {
+    baseUrl: FixedHttpsUrl
+    apiKey: SecretString
+    modelId: NonEmptyString<=160
+    dialect: chat_completions
+  }
+  tavily?: {
+    baseUrl: "https://api.tavily.com"
+    apiKey: SecretString
+  }
+  mcp?: {
+    baseUrl: FixedHttpsUrl
+    credential?: SecretString
+    allowedTools: ExactSubset<ReadOnlyToolIdV3>
+  }
+}
+
+type ProviderClassV1 = openai_compatible|tavily|remote_mcp
+type ProviderStateV1 = ready|limited|unavailable
+
+type ProviderHealthResponseV1 = exact {
+  schemaVersion: "gridlens.provider-health.v1"
+  overall: ProviderStateV1
+  providers: Array<=3<exact {
+    providerClass: ProviderClassV1
+    state: ProviderStateV1
+    capabilities: ExactSet<analysis|web_search|web_research>
+  }>
+  checkedAt: Instant
+  cacheSeconds: Integer[0..30]
+}
+```
+
+Producer: Worker environment adapter. Consumers: server provider clients and sanitized health route. `OperatorProviderConfigV1`, `SecretString`, raw endpoint paths, model IDs and upstream error bodies are forbidden from React props, RSC payloads, structured-clone roots, browser storage, public errors, responses, telemetry, logs, exports, and generated visuals.
+
+Local development may map ignored `TEST.md` into Worker bindings before the application environment starts. Only the Vite/Worker configuration boundary may read the file. Production client/server modules may read environment bindings but shall never import `TEST.md`, a TEST parser, or a value literal. Hosted configuration uses Sites runtime secrets.
+
+### CTR-026 — Same-origin provider API
+
+All API request/response objects are closed JSON objects. Unknown fields reject. Requests require `Content-Type: application/json`, a same-origin request context, and an active non-aborted request signal. No request schema includes a URL, endpoint, key, credential, header, HTTP method, model identifier, provider identifier, MCP endpoint, arbitrary tool name, or redirect policy.
+
+```text
+type PublicProviderErrorCodeV1 =
+  invalid_request|payload_too_large|provider_unavailable|research_unavailable|
+  rate_limited|upstream_timeout|upstream_rejected|invalid_upstream_response|
+  cancelled|internal_error
+
+type PublicApiErrorV1 = exact {
+  schemaVersion: "gridlens.public-error.v1"
+  error: exact {
+    code: PublicProviderErrorCodeV1
+    message: PublicSafeString<=240
+    retryable: boolean
+    correlationId: CorrelationId
+  }
+}
+
+type ResearchRequestV1 = exact {
+  schemaVersion: "gridlens.research-request.v1"
+  requestId: RequestId
+  query: TrimmedString[3..500]
+  regionId: RegionIdV3
+  scenarioId: ScenarioId
+}
+
+type ResearchCandidateV1 = exact {
+  title: PlainText[1..240]
+  url: PublicHttpUrl
+  excerpt: PlainText<=900
+  retrievedAt: Instant
+  sourceClass: official|public_web
+}
+
+type ResearchResponseV1 = exact {
+  schemaVersion: "gridlens.research-response.v1"
+  requestId: RequestId
+  candidates: Array<=4<ResearchCandidateV1>
+  providerClass: tavily|remote_mcp
+  partial: boolean
+}
+
+type AgentRequestV1 = exact {
+  schemaVersion: "gridlens.agent-request.v1"
+  requestId: RequestId
+  prompt: TrimmedString[3..4000]
+  context: DeterministicPromptContextV3<=49152_bytes
+  research?: Array<=4<ResearchCandidateV1>
+}
+
+type AgentResponseV1 = exact {
+  schemaVersion: "gridlens.agent-response.v1"
+  requestId: RequestId
+  answer: PlainText[1..32000]
+  citations: Array<=12<exact { title:PlainText[1..240]; url:PublicHttpUrl }>
+  providerClass: openai_compatible
+  generatedAt: Instant
+  partial: boolean
+}
+```
+
+Route table:
+
+| Method/path | Input | Success | Limits | Producer | Consumers |
+|---|---|---|---|---|---|
+| `GET /api/v1/providers/health` | none | `ProviderHealthResponseV1` | 30-second maximum public cache | Worker health adapter | AI status UI, E2E |
+| `POST /api/v1/research` | `ResearchRequestV1` | `ResearchResponseV1` | 16 KiB body, 10 s upstream, max 4 results/24 KiB response | Worker Tavily/MCP adapter | Agent orchestration, evidence candidate UI |
+| `POST /api/v1/agent` | `AgentRequestV1` | `AgentResponseV1` | 64 KiB body, 40 s total, 900 output tokens, 48 KiB response | Worker model adapter | Prompt workspace |
+
+Redirects are rejected. Authentication, schema, cancellation, redirect, and non-idempotent failures are never retried. Research and model calls may receive one retry for 429/5xx only when the total deadline and request signal permit. Maximum in-flight provider operations per Worker isolate is four; excess work returns `rate_limited`. This concurrency guard is defense in depth, not a durable public rate limiter.
+
+### CTR-027 — Fixed provider clients and sanitisation
+
+`ModelProviderClientV1`, `TavilyProviderClientV1`, and `McpProviderClientV1` receive only server-owned `OperatorProviderConfigV1` plus validated operation inputs. URL construction is a pure function of fixed base URL and code-owned path. Authorization is added only at this boundary. User/body/model output cannot influence destination, header names, method, model, tool registry, or redirect behavior.
+
+The model adapter accepts public assistant `content` only. Private reasoning channels and `<think>...</think>` blocks are discarded and never logged or returned. Tavily/MCP results are mapped field-by-field into `ResearchCandidateV1`; extra fields, raw content, provider usage data, and unsafe/non-public URLs are discarded. Public errors are created from status classes, never upstream body text.
+
+### CTR-028 — v0.11 producer/consumer and retirement matrix
+
+| Contract | Producer | Consumers | Version/failure rule |
+|---|---|---|---|
+| CTR-023 region asset | Spatial build step | Map loader, selection resolver, accessible index, packaging | Hash/shape/set mismatch rejects generation and release |
+| CTR-024 map state/selection | Map/list/search/coordinate adapters | App store, renderer, scenario, evaluator, prompt context | Latest operation generation wins; scoped asset degradation |
+| CTR-025 operator config/health | Worker env adapter | Provider clients; sanitized projection to UI | Secret type never crosses server boundary; missing config -> unavailable |
+| CTR-026 provider API | Worker routes | Same-origin browser API client | Closed schema and stable public errors; no dynamic destination fields |
+| CTR-027 fixed clients | Worker route orchestrator | Fixed upstream providers | No redirects; bounded retry/time/size; sanitized projection only |
+
+Retired from production v0.11: `SanitizedConnectorConfigurationV2`, browser `EncryptedCredentialRecord`, connector capability/vault commands, destination/content acceptance for user-selected providers, credential clear/replace, raw connector routing, and any direct browser model/Tavily/MCP call. Device-local scenario/cache contracts remain valid after removing credential record variants.
+
+### v0.11 traceability
+
+| Requirements | Contracts |
+|---|---|
+| FR-LOC-001–004, FR-MAP-001–004 | CTR-023–024 plus existing scenario/site/evidence contracts |
+| FR-CONN-001–008 | CTR-025–027 |
+| FR-AGT-001–010, FR-VIZ-001–003 | CTR-026–027 plus existing deterministic context/visual contracts |
+| FR-SAVE-001–002 | Existing scenario/cache storage contracts minus retired credential variants |
+| NFR-PER-001, NFR-ACC-001 | CTR-023–024 load/selection/fallback limits |
+| NFR-SEC-001–002, NFR-PRI-001, NFR-OBS-001 | CTR-025–027 secret boundary, validation, fixed routing, sanitisation, safe errors |
+| NFR-DEP-001 | CTR-023–028 and single Sites Worker deployment |
+
+## Version 0.12 reconciliation — closed effective contract graph
+
+This section closes independent-review findings G3V11-001–012. It is normative. Production v0.12 generates and validates only `GridLensPublicContractV3` and its explicitly named deterministic imports. Retired V2 browser connector, credential, destination-acceptance, connector route, connector cache, and connector-clear roots are a compile-time error.
+
+### Approved Gate 3 security decisions
+
+- `g3v11-d01`: provider traffic may target only exact operator-approved public HTTPS origins. Private, loopback, link-local, reserved, IP-literal, userinfo, fragment, non-default-port unless explicitly pinned, redirect, and runtime/user/model-selected destinations are forbidden. The private hackathon Sites access boundary remains mandatory.
+- `g3v11-d02`: research used by the agent is performed inside the same Worker operation and remains server-side until sanitized citations are returned. The agent request accepts no research candidate, URL, excerpt, source-class, provider, model, endpoint, header, method, or tool field.
+
+### CTR-029 — Canonical scalar and encoding vocabulary
+
+```text
+type RegionId = "01"|"02"|"03"|"04"|"05"|"06"|"07"|"08"|"09"|
+                "12"|"13"|"14"|"15"|"16"|"17"|"18"|"99"
+type GeographyIdV3 = RegionId
+type UUIDv7String = lowercase RFC-4122 UUID with version nibble 7 and legal variant
+type OperationId = UUIDv7String
+type RequestId = UUIDv7String
+type CorrelationId = UUIDv7String
+type ScenarioId = UUIDv7String | "current-demo"
+type MarkerId = ASCII pattern ^(project|candidate):[a-z0-9][a-z0-9-]{0,111}$
+type ProjectId = ASCII pattern ^project:[a-z0-9][a-z0-9-]{0,111}$
+type CandidateId = ASCII pattern ^candidate:[a-z0-9][a-z0-9-]{0,109}$
+type EvidenceId = ASCII pattern ^evidence:[a-z0-9][a-z0-9-]{0,108}$
+type ClaimId = ASCII pattern ^claim:[a-z0-9][a-z0-9-]{0,111}$
+type CitationId = ASCII pattern ^citation:[a-z0-9][a-z0-9-]{0,108}$
+type Sha256 = exactly 64 lowercase hexadecimal characters
+type Instant = RFC3339UtcString
+type PlainText<N> = UTF8String[1..N bytes] with C0 controls except TAB/LF/CR forbidden
+type PublicUrl = parsed absolute http|https URL; no userinfo; no fragment; <=2048 bytes
+type Wgs84Point = exact { longitude:Number[-180..180]; latitude:Number[-90..90] }
+type FiniteNumber = JSON number that is finite and does not encode negative zero
+type SelectionGeneration = SafeInteger[1..9007199254740991]
+type ExactSet<T,N> = JSON array[0..N] sorted by canonical UTF-8 value, unique
+type ExactObject = JSON object whose decoder rejects every unknown or duplicate key
+type ParsedHttpsOrigin = normalized ASCII `https://host` with port omitted because only 443 is legal
+type NormalizedPath = ASCII path beginning `/`; dot segments, backslash and percent-encoded separators forbidden
+type SecretBytes = server-only opaque Uint8Array[1..8192] with explicit zeroization and no serializer
+```
+
+All public JSON uses UTF-8, finite JSON numbers, canonical field names, exact arrays/objects, and duplicate-aware parsing before ordinary JSON decoding. `NaN`, infinity, prototype keys, duplicate keys, coercion, and unpaired surrogates reject. Public URL classification never grants evidence authority.
+
+### CTR-030 — Generation-bound region asset and marker pack
+
+The v0.12 region geometry graph is fully closed:
+
+```text
+type RegionFeaturePropertiesV3 = exact {
+  regionId: RegionId
+  name: PlainText<80>
+  labelPoint: Wgs84Point
+  sourceField: "REGC_code"
+  sourceNameField: "REGC_name"
+}
+
+type PositionV3 = exact tuple [longitude:Number[-180..180], latitude:Number[-90..90]]
+type LinearRingV3 = Array<4..20000,PositionV3> where first == last
+type PolygonCoordinatesV3 = Array<1..2000,LinearRingV3>
+type MultiPolygonCoordinatesV3 = Array<1..2000,PolygonCoordinatesV3>
+type RegionFeatureV3 =
+  | exact { type:"Feature"; id:RegionId; properties:RegionFeaturePropertiesV3;
+            geometry:exact { type:"Polygon"; coordinates:PolygonCoordinatesV3 } }
+  | exact { type:"Feature"; id:RegionId; properties:RegionFeaturePropertiesV3;
+            geometry:exact { type:"MultiPolygon"; coordinates:MultiPolygonCoordinatesV3 } }
+type RegionFeatureCollectionV3 = exact {
+  type:"FeatureCollection"
+  features:Array<17..17,RegionFeatureV3>
+}
+
+type RegionAssetManifestV2 = exact {
+  schemaVersion: "gridlens.region-asset.v2"
+  edition: "Stats NZ Regional Council 2023 (generalised), 12 nautical miles"
+  sourceDatasetUrl: "https://datafinder.stats.govt.nz/layer/111182-regional-council-2023-generalised/"
+  distributionUrl: "https://services.arcgis.com/XTtANUDT8Va4DLwI/arcgis/rest/services/Regional_Council_Boundary/FeatureServer/0"
+  licence: "Creative Commons Attribution 4.0 International"
+  attribution: "Stats NZ; distributed by Eagle Technology"
+  generatedAt: Instant
+  geometryPrecision: 5
+  generalizationToleranceDegrees: 0.0005
+  sha256: Sha256
+  featureCount: 17
+  regionIds: ExactSet<RegionId,17>
+  releaseId: PlainText<80>
+}
+
+type MapMarkerV3 =
+  | exact { kind:"existing_project"; markerId:MarkerId; projectId:ProjectId;
+            name:PlainText<120>; regionId:RegionId; point:Wgs84Point;
+            status:"operating"; sourceRecordId:EvidenceId }
+  | exact { kind:"proposed_project"; markerId:MarkerId; projectId:ProjectId;
+            name:PlainText<120>; regionId:RegionId; point:Wgs84Point;
+            status:"proposed"|"consenting"|"construction"; sourceRecordId:EvidenceId }
+  | exact { kind:"screened_candidate"; markerId:MarkerId; candidateId:CandidateId;
+            name:PlainText<120>; regionId:RegionId; point:Wgs84Point;
+            domainOutcome:"included"|"excluded"|"specialist_assessment_required"|
+              "infrastructure_upgrade_required"|"insufficient_evidence";
+            presentationGroup:"passes_declared_constraints"|"needs_investigation"|"excluded";
+            sourceRecordId:EvidenceId }
+
+type MarkerPackV3 = exact {
+  schemaVersion:"gridlens.marker-pack.v3"
+  releaseId:PlainText<80>
+  sha256:Sha256
+  markers:Array<0..5000,MapMarkerV3>
+}
+```
+
+Region manifest, GeoJSON, and marker pack are immutable core release assets under the same release ID. Source codes `1`–`9` normalize once at build time to `01`–`09`; `12`–`18` and `99` remain byte-identical. The preparation build verifies source count, codes, names, geometry, label points, licence, and hashes. Active verified assets are cacheable and available offline; a failed candidate generation never replaces them.
+
+### CTR-031 — Canonical selection intent, outcome, and receipt
+
+```text
+type SelectionSourceV3 = "polygon_pointer"|"polygon_keyboard"|"marker_pointer"|
+  "marker_keyboard"|"accessible_list"|"search"|"coordinate"|"restore"
+
+type RegionSelectionIntentV3 = exact {
+  kind:"select_region"
+  operationId:OperationId
+  selectionGeneration:SelectionGeneration
+  source:SelectionSourceV3
+  requestedRegionId?:RegionId
+  pointerPoint?:Wgs84Point
+  markerId?:MarkerId
+}
+
+type CoordinateSelectionIntentV3 = exact {
+  kind:"resolve_coordinate"
+  operationId:OperationId
+  selectionGeneration:SelectionGeneration
+  source:"coordinate"
+  point:Wgs84Point
+}
+
+type RegionSelectionV3 =
+  | exact { kind:"selected_region"; regionId:RegionId; source:SelectionSourceV3;
+            selectedMarkerId?:MarkerId; candidatePoint?:Wgs84Point;
+            geometryEdition:PlainText<100>; selectedAt:Instant }
+  | exact { kind:"unresolved_point"; point:Wgs84Point; source:"coordinate";
+            reason:"outside_verified_regions"|"geometry_unavailable"; selectedAt:Instant }
+
+type SelectionReceiptV3 = exact {
+  schemaVersion:"gridlens.selection-receipt.v3"
+  operationId:OperationId
+  selectionGeneration:SelectionGeneration
+  outcome:"accepted"|"stale_ignored"|"idempotent_replay"|"invalid"
+  selection?:RegionSelectionV3
+}
+```
+
+The selection store owns the monotonically increasing generation. Operation-ID replay returns the byte-identical receipt. Pointer/coordinate region IDs are derived by the pinned geometry engine from all matching polygons, with the lexicographically smallest `RegionId` winning shared-boundary ties; rendered feature order is never authority. Pointer intents require `pointerPoint` and forbid `requestedRegionId`; list/search/restore intents require `requestedRegionId`. Marker activation derives region from `MarkerPackV3`. Polygon/list/search selection always clears a selected marker. `GeographyIdV3` serializes exactly as `RegionId`; legacy opaque geography IDs migrate only through a frozen one-to-one table or quarantine.
+
+### CTR-032 — Closed provider health and public route graph
+
+```text
+type ProviderClassV3 = "openai_compatible"|"tavily"|"remote_mcp"
+type ProviderStateV3 = "ready"|"limited"|"unavailable"
+type ProviderReasonV3 = "configured"|"not_configured"|"probe_timeout"|
+  "authentication_rejected"|"quota_limited"|"invalid_response"|"policy_rejected"
+
+type ProviderHealthEntryV3 = exact {
+  providerClass:ProviderClassV3
+  state:ProviderStateV3
+  reason:ProviderReasonV3
+  capabilities:ExactSet<"analysis"|"web_search"|"web_research",3>
+}
+
+type ProviderHealthResponseV3 = exact {
+  schemaVersion:"gridlens.provider-health.v3"
+  overall:ProviderStateV3
+  providers:Array<1..3,ProviderHealthEntryV3>
+  checkedAt:Instant
+  cacheSeconds:SafeInteger[0..60]
+}
+```
+
+There is exactly one entry per configured provider class in canonical class order. Legal capabilities are model -> analysis, Tavily -> web_search|web_research, MCP -> its pinned subset. `overall=ready` iff model is ready and every configured optional provider is ready; `limited` iff model is ready and any optional provider is limited/unavailable, or model is limited; otherwise unavailable.
+
+`GET /api/v1/providers/health`, `POST /api/v1/research`, and `POST /api/v1/agent` are the only public provider routes. POST requires private Sites access plus exact browser `Origin` and `Sec-Fetch-Site:same-origin`; authorized local smoke clients use an explicit server-only test token and may omit browser headers. CORS is not enabled. Responses set `Cache-Control:no-store` except sanitized health (`private,max-age<=60`), `X-Content-Type-Options:nosniff`, `Referrer-Policy:no-referrer`, and a restrictive CSP on HTML.
+
+### CTR-033 — Research, deterministic context, structured agent results
+
+```text
+type ResearchRequestV3 = exact {
+  schemaVersion:"gridlens.research-request.v3"
+  requestId:RequestId
+  query:PlainText<500>
+  regionId:RegionId
+  scenarioId:ScenarioId
+}
+
+type ResearchCandidateV3 = exact {
+  citationId:CitationId
+  title:PlainText<240>
+  url:PublicUrl
+  excerpt:PlainText<900>
+  retrievedAt:Instant
+  sourceClass:"official_candidate"|"public_web_candidate"
+}
+
+type ResearchResponseV3 = exact {
+  schemaVersion:"gridlens.research-response.v3"
+  requestId:RequestId
+  candidates:Array<0..4,ResearchCandidateV3>
+  providerClass:"tavily"|"remote_mcp"
+  partial:boolean
+}
+
+type DeterministicPromptContextV3 = exact {
+  schemaVersion:"gridlens.prompt-context.v3"
+  scenario:exact { scenarioId:ScenarioId; name:PlainText<120>; itCapacityMw:Number[0..10000];
+    pue:Number[1..3]; utilizationRatio:Number[0..1]; concurrencyRatio:Number[0..1] }
+  calculations:exact { addedPeakMw:Number[0..30000]; annualEnergyGwh:Number[0..300000];
+    concurrentDemandMw:Number[0..30000]; maximumFlexibleLoadMw:Number[0..30000];
+    formulaVersion:"gridlens-demo-1.0.0" }
+  selection:RegionSelectionV3
+  selectedCandidate?:exact { candidateId:CandidateId; domainOutcome:PlainText<80>;
+    presentationGroup:PlainText<80>; reasons:Array<0..12,PlainText<320>> }
+  trustedEvidenceIds:ExactSet<EvidenceId,64>
+  contextFingerprint:Sha256
+}
+
+type AgentModeV3 = "analysis"|"site_profile"|"visual"|"guided_question"
+type AgentRequestV3 = exact {
+  schemaVersion:"gridlens.agent-request.v3"
+  requestId:RequestId
+  mode:AgentModeV3
+  prompt:PlainText<4000>
+  context:DeterministicPromptContextV3
+  includeWebResearch:boolean
+}
+
+type AgentClaimV3 = exact {
+  claimId:ClaimId
+  kind:"source_statement"|"model_inference"|"uncertainty"|"recommendation"
+  text:PlainText<1200>
+  citationIds:ExactSet<CitationId,8>
+}
+
+type SiteProfileCandidateV3 = exact {
+  kind:"site_profile_candidate"
+  regionId:RegionId
+  summary:PlainText<2000>
+  strengths:Array<0..6,PlainText<300>>
+  constraints:Array<0..6,PlainText<300>>
+  missingEvidence:Array<0..8,PlainText<300>>
+}
+
+type VisualSpecCandidateV3 =
+  | exact { kind:"bar_chart"|"line_chart"; title:PlainText<160>; xLabel:PlainText<80>;
+            yLabel:PlainText<80>; series:Array<1..6,exact { name:PlainText<80>;
+            values:Array<1..24,exact { label:PlainText<80>; value:FiniteNumber }> }>;
+            sourceRecordIds:ExactSet<EvidenceId,32> }
+  | exact { kind:"table"; title:PlainText<160>; columns:Array<1..8,PlainText<80>>;
+            rows:Array<1..50,Array<1..8,PlainText<300>>>; sourceRecordIds:ExactSet<EvidenceId,32> }
+
+type AgentResponseV3 = exact {
+  schemaVersion:"gridlens.agent-response.v3"
+  requestId:RequestId
+  mode:AgentModeV3
+  contextFingerprint:Sha256
+  claims:Array<1..16,AgentClaimV3>
+  citations:Array<0..12,ResearchCandidateV3>
+  payload?:SiteProfileCandidateV3|VisualSpecCandidateV3
+  providerClass:"openai_compatible"
+  generatedAt:Instant
+  partial:boolean
+}
+```
+
+The Worker recomputes and validates `contextFingerprint`. When `includeWebResearch=true`, it performs the bounded research call inside the same operation, keeps raw candidates server-side, supplies only sanitized candidates to the model, and returns only citations actually referenced by structured claims. `/research` remains a standalone inspectable search surface; its candidates are never accepted by `/agent`. `official_candidate` is assigned only by a code-owned exact host registry and is still not verified evidence. The response must parse from the model's structured JSON into the exact requested mode; narrative text alone is invalid for `site_profile` or `visual`. A trusted client resolver independently validates visual values/lineage before rendering; no code/HTML/expression is legal.
+
+### CTR-034 — Server-only provider policy, egress guard, and attempt budgets
+
+```text
+type AllowedProviderOriginV1 = server-only exact {
+  providerClass:ProviderClassV3
+  origin:ParsedHttpsOrigin
+  basePath:NormalizedPath
+  allowedPaths:ExactSet<NormalizedPath,8>
+  allowedPort:443
+  hostnamePolicy:"public_dns_name_only"
+}
+
+type PinnedMcpOperationV1 = server-only exact {
+  publicOperation:"web_search"|"web_research"
+  remoteToolName:PlainText<120>
+  inputSchemaHash:Sha256
+  outputSchemaHash:Sha256
+}
+
+type GridLensServerContractV1 = compile-time-only exact {
+  model:AllowedProviderOriginV1 & { apiKey:SecretBytes; modelId:SecretBytes }
+  tavily?:AllowedProviderOriginV1 & { apiKey:SecretBytes }
+  mcp?:AllowedProviderOriginV1 & { credential?:SecretBytes;
+    operations:Array<1..4,PinnedMcpOperationV1> }
+  localSmokeToken?:SecretBytes
+}
+```
+
+`GridLensServerContractV1`, secret bytes, endpoints, model IDs, request bodies, raw provider bodies, and reasoning are absent from every public schema/import graph. Config accepts only HTTPS DNS hostnames, rejects IP literals and known private/loopback/link-local/reserved host forms, userinfo, fragments, non-pinned ports, encoded-host ambiguity, and paths outside the exact path table. Deployment validation resolves approved hosts to public addresses; redirects are disabled. Because the Worker runtime does not expose the final socket address, the exact-origin allowlist plus deployment DNS validation is the accepted hackathon control; a provider hostname/DNS ownership change blocks redeployment and requires operator review.
+
+Per public request there is one total outbound attempt per provider—no automatic POST retry and no reasoning retry—preventing double billing and ambiguous attempt accounting. Limits before allocation/while streaming are: research outbound request 16 KiB, raw research response 256 KiB, agent outbound request 96 KiB, raw model response 256 KiB, MCP request 16 KiB, raw MCP response 256 KiB. Timeouts are research/MCP 10 s and model 40 s. The isolate-wide in-flight cap is four; private access remains mandatory because this is not durable public rate limiting.
+
+Before public serialization, the egress guard inspects every decoded leaf and the final serialized byte stream for every exact active secret, credential, model ID, full private endpoint, endpoint host/path/query component, authorization value, and declared credential-shaped pattern, including values split across adjacent fields/chunks. Any match discards the entire result and returns `invalid_upstream_response`; matches are never printed, logged, snapshotted, traced, redacted into partial output, or counted by value. The same guard covers health, research, agent, errors, diagnostics, screenshots, traces, and labels.
+
+### CTR-035 — V3 registry, research cache, routes, and migration
+
+```text
+type RetrievalModeV3 = "prepared_asset"|"public_cors"|"server_provider"|"link_only"|"disabled"
+type SourceRegistryEntryV3 = exact {
+  sourceId:PlainText<80>
+  label:PlainText<120>
+  retrievalMode:RetrievalModeV3
+  providerClass?:ProviderClassV3
+  authorityPurpose:PlainText<240>
+  licence:PlainText<200>
+  attribution:PlainText<200>
+}
+
+type ResearchCacheRecordV3 = exact {
+  schemaVersion:"gridlens.research-cache.v3"
+  request:ResearchRequestV3
+  response:ResearchResponseV3
+  routeId:"server:tavily"|"server:mcp:web_search"|"server:mcp:web_research"
+  responseHash:Sha256
+  retrievedAt:Instant
+  expiresAt:Instant
+  refreshable:boolean
+}
+
+type WorkflowRouteV3 = "map"|"scenario"|"evaluation"|"evidence"|"agent"|"sources"
+
+type PublicProviderErrorCodeV3 = "invalid_request"|"payload_too_large"|
+  "provider_unavailable"|"research_unavailable"|"rate_limited"|
+  "upstream_timeout"|"upstream_rejected"|"invalid_upstream_response"|
+  "cancelled"|"internal_error"
+type PublicApiErrorV3 = exact {
+  schemaVersion:"gridlens.public-error.v3"
+  error:exact { code:PublicProviderErrorCodeV3; message:PlainText<240>;
+    retryable:boolean; correlationId:CorrelationId }
+}
+```
+
+Tavily and remote MCP registry entries use `server_provider`; no V3 route or cache contains a connector ID, connector configuration, secret handle, destination acceptance, or connector-settings route. Migration deletes legacy credential/configuration material. A V2 research result may be retained only as `legacy_stale` inspectable content with refresh disabled and its former connector fields omitted; if its content/provenance cannot be proven without secret-bearing data it is quarantined. Scenario/result/preference records map legacy region identifiers through the frozen table or quarantine. New V3 cache records refresh only by reissuing their exact V3 request through the fixed server route.
+
+### CTR-036 — Effective exported roots
+
+```text
+type GridLensPublicContractV3 = exact {
+  regionManifest:RegionAssetManifestV2
+  regionFeatures:RegionFeatureCollectionV3
+  markerPack:MarkerPackV3
+  selectionIntent:RegionSelectionIntentV3|CoordinateSelectionIntentV3
+  selectionReceipt:SelectionReceiptV3
+  providerHealth:ProviderHealthResponseV3
+  researchRequest:ResearchRequestV3
+  researchResponse:ResearchResponseV3
+  agentRequest:AgentRequestV3
+  agentResponse:AgentResponseV3
+  publicError:PublicApiErrorV3
+  sourceRegistryEntry:SourceRegistryEntryV3
+  researchCache:ResearchCacheRecordV3
+  workflowRoute:WorkflowRouteV3
+}
+```
+
+Build-time TypeScript and strict JSON Schema generation starts at `GridLensPublicContractV3`, follows every transitive public reference, and rejects unresolved names, `any`, open objects/enums, ambiguous refinements, and every retired browser connector root. `GridLensServerContractV1` is checked by a separate server-only compile graph and is statically unreachable from React, RSC, client bundles, public schemas, structured-clone roots, and storage. Existing deterministic calculation, assessment, evidence, case, report, and trusted visual-resolution types are imported only through explicit adapter functions that use `RegionId` exactly and contain no connector types.
+
+### v0.12 requirement trace
+
+| Approved family | Effective contracts |
+|---|---|
+| FR-LOC-001–004, FR-MAP-001–004, AC-001/002/023 | CTR-029–031, CTR-036 |
+| FR-CONN-001–008, AC-010–013 | CTR-032–036 |
+| FR-AGT-001–011, AC-014/017/018/026 | CTR-033–036 plus explicit deterministic adapters |
+| FR-VIZ-001–003, AC-015 | `VisualSpecCandidateV3`, trusted client resolver, CTR-036 |
+| FR-SAVE-001–002, AC-020 | CTR-035 plus surviving non-secret storage adapters |
+| NFR-PER-001, NFR-ACC-001 | CTR-030–031 load/selection/semantic fallback |
+| NFR-SEC-001–002, NFR-PRI-001, NFR-OBS-001, AC-011/012/021 | CTR-032–036 exact origins, egress guard, closed schemas, safe logs |
+| NFR-DEP-001, CON-004–007 | one private Sites Worker, generation-bound core assets, server-only graph |
+
+## Version 0.12.1 blocker closure — effective full graph and exact refinements
+
+This addendum is normative over CTR-029–036 and closes G3V12-001–006 without changing Gate 2 or ADR-013.
+
+### CTR-037 — Complete deterministic graph and migration adapters
+
+```text
+type GridLensDeterministicContractV3 = exact {
+  releaseManifest:ReleaseManifestV2
+  dataPackManifest:DataPackManifestV2
+  evidenceRecord:EvidenceRecordV2
+  evidenceFact:EvidenceFact
+  evidenceSnapshot:EvidenceSnapshot
+  evidenceEdge:EvidenceEdgeV2
+  evidenceGraphSnapshot:EvidenceGraphSnapshotV2
+  projectCatalogRecord:ProjectCatalogRecordV2
+  projectSheet:ProjectSheetV2
+  trustedStatement:TrustedStatementV2
+  unresolvedQuestion:UnresolvedQuestionV2
+  missingVoiceRecord:MissingVoiceRecordV2
+  companyIdentityRecord:CompanyIdentityRecordV2
+  companyClaimRecord:CompanyClaimRecordV2
+  communityRecord:CommunityRecordV2
+  resultSnapshot:ResultSnapshotV2
+  projectCase:ProjectCaseV2
+  impactBrief:ImpactBriefV2
+  impactBriefCopyOutcome:ImpactBriefCopyOutcomeV2
+  siteProfile:SiteProfileCandidateV2
+  siteScreening:CandidateScreeningV2
+  sensitivityResult:SensitivityResultV2
+  sitePresentation:SitePresentationPolicyV2
+  trustedVisualSpec:VisualSpecV2
+  trustedVisualOutcome:VisualOutcomeV2
+  storedEnvelope:StoredEnvelopeV3
+  updateState:UpdateGenerationState
+  emiOutcome:EmiPublishOutcome
+  diagnosticEvent:DiagnosticEventV2
+}
+
+type LegacyRegionIdentityV3 = RegionId | `region:${RegionId}` | `geo_${RegionId}`
+type RegionIdentityMigrationV3 =
+  | exact { outcome:"mapped"; input:LegacyRegionIdentityV3; regionId:RegionId }
+  | exact { outcome:"quarantined"; inputHash:Sha256; reason:"unknown_geography_identity" }
+
+type DeterministicAdapterReceiptV3 = exact {
+  adapter:"result"|"evidence"|"case"|"brief"|"site_profile"|"screening"|
+    "visual"|"route"|"storage"|"emi"
+  inputSchemaVersion:SafeInteger
+  outputSchemaVersion:3
+  regionMigrations:Array<0..256,RegionIdentityMigrationV3>
+  inputHash:Sha256
+  outputHash?:Sha256
+  outcome:"adapted"|"quarantined"
+}
+```
+
+The V3 generator exports the complete `GridLensDeterministicContractV3` transitive closure alongside CTR-029–042. Each named adapter decodes its exact legacy input, replaces every geography occurrence only through `RegionIdentityMigrationV3`, validates all internal references/hashes again, and emits `DeterministicAdapterReceiptV3`. `RegionId`, `region:RegionId`, and `geo_RegionId` are the only mappable spellings; everything else quarantines the whole containing record. Unlisted V2 roots and all connector/credential/acceptance/tool-routing roots fail compilation. Current V3 records contain `RegionId` directly and never run a migration adapter.
+
+`GridLensPublicContractV3` is amended with `deterministic:GridLensDeterministicContractV3` and `adapterReceipt:DeterministicAdapterReceiptV3`. `StoredEnvelopeV3` is the surviving V2 non-secret envelope with current payloads restricted to V3 deterministic/cache/route roots; it has no connector/configuration/secret variant.
+
+### CTR-038 — Legal selection and marker unions
+
+```text
+type CallerSelectionIntentV3 =
+  | exact { kind:"polygon_pointer"; operationId:OperationId; point:Wgs84Point }
+  | exact { kind:"polygon_keyboard"; operationId:OperationId; regionId:RegionId }
+  | exact { kind:"marker_pointer"; operationId:OperationId; markerId:MarkerId }
+  | exact { kind:"marker_keyboard"; operationId:OperationId; markerId:MarkerId }
+  | exact { kind:"accessible_list"; operationId:OperationId; regionId:RegionId }
+  | exact { kind:"search"; operationId:OperationId; regionId:RegionId }
+  | exact { kind:"restore"; operationId:OperationId; regionId:RegionId }
+  | exact { kind:"coordinate"; operationId:OperationId; point:Wgs84Point }
+
+type StampedSelectionCommandV3 = exact {
+  intent:CallerSelectionIntentV3
+  selectionGeneration:SelectionGeneration
+  canonicalIntentHash:Sha256
+}
+```
+
+Only the selection store can produce `StampedSelectionCommandV3`; it is not an API/UI input. `CallerSelectionIntentV3` replaces the CTR-031 option bag. Each marker pack is canonically sorted by `markerId`; `markerId`, `projectId`, and `candidateId` are unique in their applicable namespaces. Existing/proposed project variants require `markerId==projectId` and a `project:` prefix. Screened candidates require `markerId==candidateId` and a `candidate:` prefix. Every marker point resolves inside its declared `regionId` under the pinned geometry engine or the whole pack rejects.
+
+### CTR-039 — Lossless agent context and trusted mode payloads
+
+```text
+type PromptStageV3 = "map"|"scenario"|"result"|"comparison"|"evidence"|
+  "project_case"|"impact_brief"
+
+type TrustedContextRecordV3 =
+  | exact { kind:"deterministic_value"; recordId:EvidenceId; fieldPath:PlainText<160>;
+      label:PlainText<120>; value:FiniteNumber|PlainText<1200>|boolean;
+      unit?:PlainText<40>; origin:"user_input"|"prepared_data"|"calculation";
+      authority:"deterministic"; freshness:PlainText<80>; snapshotHash:Sha256 }
+  | exact { kind:"evidence_statement"; recordId:EvidenceId; title:PlainText<240>;
+      text:PlainText<2400>; sourceUrl?:PublicClickableUrlV3;
+      authority:PlainText<80>; freshness:PlainText<80>; origin:PlainText<80>;
+      snapshotHash:Sha256 }
+  | exact { kind:"required_disclaimer"; recordId:EvidenceId; text:PlainText<1200>;
+      snapshotHash:Sha256 }
+
+type ScenarioPromptSnapshotV3 = exact {
+  scenarioId:ScenarioId
+  name:PlainText<120>
+  itCapacityMw:Number[0..100000]
+  pue:Number[1..5]
+  utilizationRatio:Number[0..1]
+  flexibleWorkloadRatio:Number[0..1]
+  concurrencyRatio:Number[0..1]
+  addedPeakMw:Number[0..500000]
+  annualEnergyGwh:Number[0..4380000]
+  maximumFlexibleLoadMw:Number[0..500000]
+  formulaVersion:PlainText<80>
+}
+
+type DeterministicPromptContextV4 = exact {
+  schemaVersion:"gridlens.prompt-context.v4"
+  stage:PromptStageV3
+  scenario:ScenarioPromptSnapshotV3
+  selection:RegionSelectionV3
+  selectedResultId?:PlainText<120>
+  selectedComparisonId?:PlainText<120>
+  selectedCaseId?:PlainText<120>
+  selectedBriefId?:PlainText<120>
+  selectedCandidateId?:CandidateId
+  assessmentOutcome?:PlainText<80>
+  records:Array<1..128,TrustedContextRecordV3>
+  contextFingerprint:Sha256
+}
+
+type AgentClaimKindV4 = "source_statement"|"model_inference"|"uncertainty"|
+  "unresolved_conflict"|"unsupported"|"recommendation"
+
+type ConfirmableSiteProfileV3 = exact {
+  kind:"site_profile_candidate"
+  profileVersion:"gridlens.site-profile.v3"
+  facilityRequirements:Array<1..20,exact { criterionId:PlainText<80>;
+    field:PlainText<120>; operator:"eq"|"lte"|"gte"|"one_of";
+    value:FiniteNumber|PlainText<240>|boolean; unit?:PlainText<40> }>
+  hardConstraints:Array<0..20,PlainText<80>>
+  preferences:Array<0..20,PlainText<80>>
+  peoplePlanetPriorities:Array<0..20,exact { criterionId:PlainText<80>;
+    priority:SafeInteger[1..5] }>
+  requiresUserConfirmation:true
+}
+
+type GuidedStateV3 = exact {
+  kind:"guided_state"
+  step:"relationship_location"|"issue"|"evidence_explanation"|"what_remains_unclear"|"complete"
+  prompt:PlainText<600>
+  supportedTopics:ExactSet<"electricity"|"water"|"jobs"|"environment"|"noise_air"|
+    "ownership"|"uncertainty",7>
+  storesPersonalFeedback:false
+}
+
+type TrustedVisualBindingV3 = exact {
+  bindingId:PlainText<80>
+  contextRecordId:EvidenceId
+  fieldPath:PlainText<160>
+  expectedSnapshotHash:Sha256
+  unit?:PlainText<40>
+}
+
+type VisualSpecCandidateV4 = exact {
+  kind:"bar_chart"|"line_chart"|"table"|"metric"|"narrative_panel"
+  title:PlainText<160>
+  bindings:Array<1..64,TrustedVisualBindingV3>
+  layout:exact { xBindingIds:Array<0..24,PlainText<80>>;
+    series:Array<0..8,exact { name:PlainText<80>; bindingIds:Array<1..24,PlainText<80>> }> }
+  accessibleSummary:PlainText<1200>
+}
+```
+
+`AgentRequestV3.context` is replaced by `DeterministicPromptContextV4`. Agent response claims use `AgentClaimKindV4`. Mode `site_profile` requires only `ConfirmableSiteProfileV3`; `guided_question` requires only `GuidedStateV3`; `visual` requires only `VisualSpecCandidateV4`; `analysis` forbids a payload. The model supplies bindings, never authoritative visual numbers. The trusted resolver loads each exact context record, verifies snapshot hash/field/unit, obtains the value, and rejects every missing, unrelated, or mutated binding before rendering. All context records and required disclaimers sent to the model are visible in the disclosure UI.
+
+### CTR-040 — Full registry, route, cache, and migration state
+
+```text
+type SourceRegistryEntryV4 = exact {
+  sourceId:PlainText<80>; exactShippedName:PlainText<160>; publisherAuthority:PlainText<160>
+  shippedState:"enabled"|"prepared-only"|"link-only"|"agent-only"|"disabled"
+  disabledReason?:PlainText<240>
+  supportedFields:Array<0..128,PlainText<120>>
+  retrievalMode:RetrievalModeV3; providerClass?:ProviderClassV3
+  origin:PlainText<240>; method:"GET"|"POST"|"prepared"
+  authentication:"none"|"operator_secret"|"subscription"
+  cors:"required_pass"|"not_applicable"|"link_only"
+  licence:PlainText<240>; attribution:PlainText<240>; permittedPurpose:PlainText<320>
+  quota:PlainText<160>; refreshCadence:PlainText<160>
+  spatialResolution:PlainText<160>; temporalResolution:PlainText<160>
+  fallback:PlainText<320>; adapterVersion:PlainText<80>; freshnessPolicyId:PlainText<80>
+}
+
+type WorkflowRouteStateV3 =
+  | exact { page:"map"; regionId?:RegionId; markerId?:MarkerId }
+  | exact { page:"scenario"; scenarioId:ScenarioId; regionId?:RegionId }
+  | exact { page:"evaluation"; resultSnapshotId:PlainText<120>; regionId:RegionId;
+      candidateId?:CandidateId }
+  | exact { page:"comparison"; comparisonSnapshotId:PlainText<120> }
+  | exact { page:"evidence"; evidenceId:EvidenceId; snapshotHash:Sha256 }
+  | exact { page:"project_case"; projectId:ProjectId; caseSnapshotId:Sha256;
+      section:PlainText<80> }
+  | exact { page:"impact_brief"; briefId:PlainText<120>; briefSnapshotId:Sha256 }
+  | exact { page:"agent"; stage:PromptStageV3; contextFingerprint:Sha256 }
+  | exact { page:"sources" }
+
+type CurrentResearchCacheV4 = exact {
+  kind:"current"; request:ResearchRequestV3; response:ResearchResponseV3
+  routeId:"server:tavily"|"server:mcp:web_search"|"server:mcp:web_research"
+  responseHash:Sha256; retrievedAt:Instant; expiresAt:Instant; refreshable:true
+}
+type LegacyResearchCacheV4 = exact {
+  kind:"legacy_stale"; legacyRecordHash:Sha256; sanitizedQuery:PlainText<500>
+  sanitizedCandidates:Array<0..4,ResearchCandidateV3>; retrievedAt:Instant
+  refreshable:false; reason:"connector_retired"
+}
+type ResearchCacheRecordV4 = CurrentResearchCacheV4|LegacyResearchCacheV4
+```
+
+The registry compiler requires the exact approved 17 names and unique IDs; conditional legality ties `agent-only` to `server_provider`, `providerClass` to server-provider rows, and disabled reason to disabled state. A current cache route must match its response provider class; `responseHash` hashes the canonical response with no omitted field, and `retrievedAt < expiresAt`. Only current records refresh. `WorkflowRouteStateV3`, `ResearchCacheRecordV4`, and migration/quarantine receipts replace CTR-035's abbreviated variants and are exported from `GridLensPublicContractV3`.
+
+### CTR-041 — Safe clickable public URL
+
+```text
+type PublicClickableUrlV3 = normalized absolute https URL with:
+  DNS hostname only; port absent or 443; no userinfo/fragment;
+  hostname not localhost and not `.localhost`, `.local`, `.internal` or home.arpa;
+  no IPv4/IPv6 literal and no private/loopback/link-local/reserved hostname form;
+  <=2048 UTF-8 bytes
+```
+
+Every research/citation/cache/DOM/copy/export URL uses `PublicClickableUrlV3`, not `PublicUrl`. Unsafe upstream URLs discard that candidate; if referenced by a claim, the whole structured response rejects. Browser links additionally use `rel="noopener noreferrer"`. URLs are never fetched by the browser or Worker merely because they are returned.
+
+### CTR-042 — Content-addressed spatial release manifest
+
+```text
+type CoreAssetBindingV3 = exact {
+  assetId:"regions.geojson"|"markers.json"
+  schemaVersion:"gridlens.regions.v3"|"gridlens.markers.v3"
+  byteLength:SafeInteger[1..2097152]
+  sha256:Sha256
+}
+type SpatialReleaseManifestV3 = exact {
+  schemaVersion:"gridlens.spatial-release.v3"
+  releaseId:PlainText<80>
+  regionSource:RegionAssetManifestV2 minus sha256 and releaseId
+  assets:Array<2..2,CoreAssetBindingV3> canonically ordered by assetId
+  manifestHash:Sha256
+}
+```
+
+`manifestHash` hashes the canonical manifest with only `manifestHash` omitted. Asset hashes cover exact file bytes with no field omission; asset files do not self-declare trusted hashes or release IDs. Activation first verifies the manifest hash, then exact asset IDs/schema versions/lengths/hashes, then parses and cross-validates geometry/marker IDs. Only the manifest supplies release identity. Mixing individually valid assets from another release fails a manifest binding before activation; cached rollback stores the complete manifest plus both exact assets.
+
+### CTR-043 — Exact non-secret current storage envelope
+
+```text
+type StoredPayloadV3 =
+  | exact { store:"scenario"; value:ScenarioStorePayloadV2; regionMigrations:Array<0..64,RegionIdentityMigrationV3> }
+  | exact { store:"result"; value:ResultSnapshotV2; regionMigrations:Array<0..64,RegionIdentityMigrationV3> }
+  | exact { store:"comparison"; value:ComparisonSnapshotV2; regionMigrations:Array<0..128,RegionIdentityMigrationV3> }
+  | exact { store:"evidence"; value:EvidenceSnapshot; regionMigrations:Array<0..64,RegionIdentityMigrationV3> }
+  | exact { store:"project_case"; value:ProjectCaseV2; regionMigrations:Array<0..128,RegionIdentityMigrationV3> }
+  | exact { store:"impact_brief"; value:ImpactBriefV2; regionMigrations:Array<0..128,RegionIdentityMigrationV3> }
+  | exact { store:"site_profile"; value:ConfirmedSiteProfile; regionMigrations:Array<0..64,RegionIdentityMigrationV3> }
+  | exact { store:"site_screening"; value:CandidateScreeningV2; regionMigrations:Array<0..64,RegionIdentityMigrationV3> }
+  | exact { store:"trusted_visual"; value:VisualOutcomeV2; regionMigrations:Array<0..64,RegionIdentityMigrationV3> }
+  | exact { store:"research_cache"; value:ResearchCacheRecordV4 }
+  | exact { store:"route"; value:WorkflowRouteStateV3 }
+  | exact { store:"prompt_history"; value:PromptHistoryRecordV2 }
+  | exact { store:"migration_receipt"; value:MigrationReceipt }
+  | exact { store:"operation_receipt"; value:StorageReceipt }
+  | exact { store:"quarantine"; value:QuarantineRecord }
+  | exact { store:"preference"; key:"audience"; value:"public"|"decision_maker" }
+  | exact { store:"preference"; key:"lens"; value:"people"|"planet" }
+  | exact { store:"preference"; key:"reduced_motion"; value:boolean }
+
+type StoredEnvelopeV3 =
+  | exact { schemaVersion:3; recordId:PlainText<160>; revision:SafeInteger[1..9007199254740991];
+      createdAt:Instant; updatedAt:Instant; state:"live"; payload:StoredPayloadV3;
+      payloadHash:Sha256 }
+  | exact { schemaVersion:3; recordId:PlainText<160>; revision:SafeInteger[1..9007199254740991];
+      store:"scenario"|"result"|"comparison"|"evidence"|"project_case"|"impact_brief"|
+        "site_profile"|"site_screening"|"trusted_visual"|"research_cache"|"route"|
+        "prompt_history"|"migration_receipt"|"operation_receipt"|"quarantine"|"preference";
+      createdAt:Instant; updatedAt:Instant; state:"tombstone"; deletedAt:Instant;
+      priorPayloadHash:Sha256 }
+```
+
+`payloadHash` is SHA-256 over the canonical `StoredPayloadV3` bytes. A live envelope has no deletion fields; a tombstone has no payload and retains the exact deleted store class. Store and payload discriminants must agree. Scenario bytes round-trip through `ScenarioStorePayloadV2`, results through their separate `ResultSnapshotV2` variant, and comparisons through the complete `ComparisonSnapshotV2`. Prompt history is legal only when its existing opt-in policy enables it. Provider configuration, credentials, endpoints, model IDs, connector/vault/acceptance records, server configuration, raw provider content, and arbitrary JSON have no legal variant. Legacy V2 records first pass their named CTR-037 adapter; only the validated adapter output and receipt can be wrapped as a current live envelope. Unknown geography or connector-bearing legacy payloads quarantine and never enter `StoredEnvelopeV3`.

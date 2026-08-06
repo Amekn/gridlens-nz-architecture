@@ -1,9 +1,10 @@
 # GridLens NZ — Design 1 usage definition
 
-**Artifact version:** 0.4 approved
+**Artifact version:** 0.5 approved
 **Status:** Approved at Gate 1
-**Approval evidence:** User message, "Approve Gate 1v.0.4"
-**Companion requirements:** `01-requirements.md` version 0.4 approved
+**Approval evidence:** User message, "Approve Gate 1 v0.5"
+**Change source:** User messages requiring a zero-credential user journey, genuinely selectable map regions and visible markers, and near-production quality
+**Companion requirements:** `01-requirements.md` version 0.5 approved
 
 ## Actors and authority
 
@@ -13,14 +14,14 @@
 | Planner/decision-maker | Uses the same public app with a decision-maker presentation: legislation/consent context, timelines, conflicts, company/comparable-project records, missing evidence, and questions for the proponent. The app does not confer official decision authority. |
 | Developer/proponent | Tests design, staging, cooling, flexibility, backup, and candidate-location alternatives. Proposal statements are claims, not verified facts. |
 | Dataset maintainer | Curates schemas, source registry, prepared regional data, EMI aggregates, factors, thresholds, geometry, licences, and evidence before deployment. No public in-app administration surface is assumed. |
-| Site operator | Builds, publishes, verifies, rolls back, and removes the Sites deployment. Has no ordinary access to device-local scenarios, credentials, prompts, or cached research. |
-| User-selected model endpoint | Produces untrusted, labelled research/analysis and safe visual specifications. It has no authority over calculations, assessments, provenance, evidence freshness, or formal decisions. |
-| Approved MCP/REST research connector | Performs allowlisted read-only search, extraction, crawl/map, or research. It cannot perform external writes or promote its output to verified evidence. |
+| Site operator | Configures and rotates server-only model/Tavily/MCP secrets, builds, publishes, verifies, rolls back, and removes the Sites deployment. Has no ordinary access to device-local scenarios, prompts, or cached research. |
+| Operator-configured model endpoint | Produces untrusted, labelled research/analysis and safe visual specifications behind the same-origin adapter. It has no authority over calculations, assessments, provenance, evidence freshness, or formal decisions. |
+| Operator-approved MCP/REST research connector | Performs allowlisted read-only search, extraction, crawl/map, or research behind the same-origin adapter. It cannot perform external writes or promote its output to verified evidence. |
 
 ## Shared usage invariants
 
 - The authoritative result snapshot is deterministic and immutable.
-- Every external request identifies its destination and selected context; unrelated local records are excluded.
+- Every external request identifies the non-secret provider class and selected context; unrelated local records are excluded and provider secrets/endpoints remain server-only.
 - Every evidence-dependent statement is typed and cited or explicitly unsupported.
 - Public/decision-maker audience mode and People/Planet lens never alter underlying values or evidence.
 - AI/MCP/live-data failure never blocks local calculations or the deterministic brief.
@@ -31,26 +32,26 @@
 - **Actor and goal:** Any user wants to find a place, existing/proposed project, or candidate-location context.
 - **Preconditions:** Static application and pinned Stats NZ geometry are available; no account is required.
 - **Trigger:** User opens the deployed URL.
-- **Main path:** Read the indicative-use/privacy summary; search for a project or place, or choose one of the 16 regional council areas plus Chatham Islands / Area Outside Region by map/list; inspect distinct existing/proposed/candidate markers; toggle declared power, water, fibre, population, environment, hazard, consent, community, company, and evidence-confidence layers; select a marker/coordinate; review its summary sheet, geometry/source versions, evidence counts, and category-level data coverage; add it to the compare tray or continue to its scenario/Project Case File.
+- **Main path:** Read the indicative-use/privacy summary; see pinned Stats NZ region polygons and distinct project/candidate markers at the national starting view; select any regional polygon by clicking/tapping inside it, or select a visible marker/list item; observe the same selected region ID, highlight, label, summary, and scenario context across map and panel; toggle only genuinely available declared layers; continue to the scenario or Project Case File.
 - **Alternate path:** Use the accessible keyboard/list equivalent, start from a saved scenario, enter coordinates, or place a candidate point directly.
 - **Boundary/invalid behavior:** A border point uses the lexicographically smallest matching region ID. A point outside recognized geometry is retained as a coordinate but detailed region-dependent evidence is missing; the nearest region is never substituted.
-- **Failure/recovery:** A failed basemap leaves the accessible region list and outline selection usable. Invalid geometry disables only affected spatial functions and identifies its version/error.
+- **Failure/recovery:** A failed basemap leaves the pinned regional polygons, markers, accessible region list, and selection usable. Invalid geometry disables only affected spatial functions and identifies its version/error; marker load failure is visible rather than silently rendering an empty map.
 - **Outputs:** Selected region/project ID, optional WGS84 point, marker status, layer/source manifest, resolution method, geometry version, coverage matrix, compare-tray state, correlation ID.
 - **Postcondition:** A location context exists; no suitability inference has occurred.
 - **Traceability:** FR-MAP-001–004, FR-LOC-001–004, FR-EVD-010, FR-RES-001; AC-001–002, AC-023.
 
-## UJ-002 — Configure and persist model/MCP connectors
+## UJ-002 — Use the operator-configured AI and research service
 
-- **Actor and goal:** User wants an AI research agent that survives page refresh.
-- **Preconditions:** Browser device storage is available, or session-only mode is accepted.
-- **Trigger:** Open Connections and add a model or Tavily-compatible research connector.
-- **Main path:** Enter custom HTTPS OpenAI-compatible base endpoint, API key, model ID, and `Auto`/Responses/Chat dialect; review the destination/privacy summary; test CORS, authentication, API dialect, model, streaming, structured output, tool calling, and remote MCP capabilities; on first successful use, save masked credential/configuration in origin-bound device storage; optionally add Tavily MCP or REST key; refresh and reconnect without re-entry.
-- **Alternate paths:** Select session-only storage; use a chat-only endpoint for commentary while tool-backed actions remain disabled; use Tavily REST when the model does not support remote MCP.
-- **Boundary/invalid behavior:** HTTP, malformed/private-file URLs, missing model/key, unsupported dialect, CORS failure, or incompatible MCP transport fail before ordinary use. Non-secret optional headers are allowlisted; arbitrary headers are rejected.
-- **Failure/recovery:** 401 permits key replacement; 403/429/5xx/CORS/timeouts show scoped guidance. No app relay or hidden endpoint is attempted. Storage denial leaves a working session-only connector.
-- **Outputs:** Sanitized connector label/origin, capability matrix, last successful test/use, persistence mode, secret record, clear/replace controls.
-- **Postcondition:** A compatible connector is available or AI features remain visibly unavailable while deterministic features work.
-- **Traceability:** FR-CONN-001–008, FR-SAVE-001, NFR-SEC-002, NFR-PRI-001; AC-010–012.
+- **Actor and goal:** User wants the built-in AI research agent without managing technical credentials or endpoints.
+- **Preconditions:** The site operator configured server-only model and optional Tavily/MCP secrets; deterministic features require no provider.
+- **Trigger:** Open the app or enter a prompt from a supported context.
+- **Main path:** The UI reads a sanitized same-origin health state; when ready, the user reviews the provider/privacy disclosure and submits a prompt; the browser sends only the prompt and selected context to the versioned same-origin route; the server validates and bounds the request, contacts only configured allowlisted providers, and returns sanitized typed analysis and cited evidence.
+- **Alternate paths:** Use deterministic results while AI/research is limited or unavailable; use model-only commentary when Tavily is unavailable; cancel an in-flight request.
+- **Boundary/invalid behavior:** User-supplied destinations, headers, models, keys, MCP endpoints/tools, oversized bodies, unknown fields, and cross-origin API calls are rejected. The UI has no credential form.
+- **Failure/recovery:** Missing configuration, 401/403/429/5xx, timeout, malformed upstream output, and provider outage return a scoped public status. Operators rotate configuration outside the public UI; no client code change or browser storage repair is required.
+- **Outputs:** Sanitized readiness/capability state, provider-class label, request receipt, typed response or structured failure; no secret, private endpoint, or upstream body diagnostics.
+- **Postcondition:** A compatible operator-managed service is available or AI features remain visibly unavailable while deterministic features work.
+- **Traceability:** FR-CONN-001–008, NFR-SEC-002, NFR-PRI-001; AC-010–013.
 
 ## UJ-003 — Build and analyse the 50 MW Southland fixture
 
@@ -81,9 +82,9 @@
 ## UJ-005 — Ask the agent a cited question
 
 - **Actor and goal:** User wants a conversational explanation or investigation based on the active context.
-- **Preconditions:** Compatible model endpoint; research connector only if fresh web evidence is requested.
+- **Preconditions:** Sanitized operator-configured model status is ready; research status is ready only if fresh web evidence is requested.
 - **Trigger:** Enter a prompt from any workflow stage.
-- **Main path:** Select which current scenario/result/evidence context will be sent; submit; the agent receives immutable deterministic records and explicit tool/authority rules; it answers with separate source statements, inference, uncertainty, and evidence links; the response is labelled AI-generated with request/model/connector/timestamp information.
+- **Main path:** Review which current scenario/result/evidence context will be sent and the non-secret provider class; submit to the same-origin agent route; the agent receives immutable deterministic records and explicit tool/authority rules; it answers with separate source statements, inference, uncertainty, and evidence links; the response is labelled AI-generated with sanitized provider/request/timestamp information.
 - **Alternate paths:** Ask only about local deterministic results without MCP; cancel a long request; retain a partial cited result; retry a transient failure within limits.
 - **Boundary/invalid behavior:** Requests to alter authoritative results, follow source-page instructions, call unapproved tools, or emit uncited external facts are rejected/contained. A late response from an obsolete request generation is discarded.
 - **Failure/recovery:** Offline, invalid schema, missing citations, quota, timeout, and provider errors show scoped recovery; the deterministic page remains usable.
@@ -225,23 +226,23 @@
 
 - **Actor and goal:** Returning user wants convenience and control on the same device.
 - **Preconditions:** Browser transactional storage or session fallback.
-- **Trigger:** Explicit save/delete/clear, automatic connector persistence after first successful use, reload, or restore.
-- **Main path:** Store each scenario, comparison, connector config/secret, cache, and optional prompt-history record in its own schema; use stable IDs/revisions/operation IDs; restore with migrations, validation, quarantine, and source-version drift reporting; refresh cached research explicitly; clear a record class or all local data with an exact confirmation summary.
-- **Alternate path:** Use session-only credentials/history; keep scenarios while clearing credentials.
+- **Trigger:** Explicit save/delete/clear, reload, or restore.
+- **Main path:** Store each scenario, comparison, non-secret UI preference, cache, and optional prompt-history record in its own schema; use stable IDs/revisions/operation IDs; restore with migrations, validation, quarantine, and source-version drift reporting; refresh cached research explicitly; clear a record class or all local data with an exact confirmation summary.
+- **Alternate path:** Use session-only history while retaining saved scenarios; provider configuration is never part of browser storage.
 - **Boundary/invalid behavior:** Corrupt records are quarantined individually. Persisted origins cannot elevate trust. Older tabs cannot resurrect tombstoned records.
 - **Failure/recovery:** Quota/storage denial preserves in-memory work and shows guidance; crash-after-commit retry reconciles by operation ID; conflicts are visible.
 - **Outputs:** Local records/tombstones, migration/drift/cache status, clear receipt; no cloud identity.
 - **Postcondition:** The explicit operation occurs exactly once or reports a scoped failure without silent sibling-data loss.
-- **Traceability:** FR-SAVE-001–002, FR-CONN-004–006, FR-EVD-012; AC-010–011, AC-020.
+- **Traceability:** FR-SAVE-001–002, FR-CONN-002–004, FR-EVD-012; AC-011, AC-020.
 
 ## UJ-017 — Maintain, publish, roll back, and remove
 
 - **Actor and goal:** Dataset maintainer and site operator want a safe release lifecycle.
 - **Preconditions:** Authorized repository/Sites access outside the public app.
 - **Trigger:** Source/schema/factor/geometry/policy/application update.
-- **Main path:** Update versioned assets/registry with provenance, licences, coverage and checksums; run source, calculation, simulation, assessment, AI/visual, storage, accessibility, security/privacy, secret scan, production build, and representative end-to-end tests; publish immutable Sites release; verify the catalog contains at least three existing/proposed/candidate records and one prepared deep Project Case File, plus whole-NZ selection, Southland fixture, connector, Tavily, visual, EMI aggregate, and deterministic offline brief.
+- **Main path:** Update versioned assets/registry with provenance, licences, coverage and checksums; configure/rotate local ignored `TEST.md` values and hosted encrypted runtime secrets; run source, calculation, simulation, assessment, same-origin agent/research, map-polygon/marker, storage, accessibility, security/privacy, exact-secret scan, production build, and representative end-to-end tests; publish immutable Sites release; verify the catalog contains at least three existing/proposed/candidate records and one prepared deep Project Case File, plus whole-NZ polygon selection, visible markers, Southland fixture, Tavily, AI explanation, visual, EMI aggregate, and deterministic offline brief.
 - **Alternate path:** Disable a source adapter with an explicit tested reason; roll back to last known-good release.
-- **Boundary/invalid behavior:** Missing attribution/provenance/units, schema drift, invalid geometry, secret, absolute local path, unacceptable coverage, failing tests, or unsafe generated-content path blocks release.
+- **Boundary/invalid behavior:** Missing attribution/provenance/units, schema drift, invalid or non-selectable geometry, invisible markers, a secret/client endpoint canary, open-proxy behavior, absolute local path, unacceptable coverage, failing tests, or unsafe generated-content path blocks release.
 - **Failure/recovery:** Failed publish leaves/returns to last known-good deployment. Removal deletes hosted release; users clear device-local data separately.
 - **Outputs:** Version-control history, validation/coverage/link/licence reports, release manifest, hosted URL, rollback/removal evidence.
 - **Postcondition:** Production is a verified release or last known-good rollback.
@@ -260,7 +261,7 @@ If promoted later, the product may collect structured public feedback only after
 1. Start in Map Explorer, search or select one of at least three existing/proposed/candidate records, inspect layers/evidence confidence, and add two candidates to the compare tray.
 2. Open the prepared deep Project Case File; switch Public/Decision-maker and People/Planet views while the evidence graph, values, sources, and statuses remain identical.
 3. Run the Southland 50 MW deterministic fixture and inspect electricity, carbon, water, flexibility, community, and evidence-gap outputs.
-4. Configure a custom OpenAI-compatible model plus Tavily route, refresh without losing credentials, ask a cited question, and generate a safe schema-bound visual.
+4. Show the built-in provider status without a credential form, ask a cited Tavily-backed question through the configured same-origin service, and generate a safe schema-bound visual.
 5. Describe site needs, confirm the parsed requirement profile, apply deterministic screening/ordering, compare candidates, and copy a complete deterministic impact brief with optional labelled AI commentary.
 6. Disconnect live/AI services and prove the prepared map, deep case, deterministic calculations, evidence provenance, and impact brief still work.
 

@@ -29,5 +29,5 @@ test("does not render checkbox or select geography controls", async () => {
   const html = await (await render()).text();
   assert.doesNotMatch(html, /type=["']checkbox["']/i);
   assert.doesNotMatch(html, /<select\b/i);
-  assert.match(html, /Selectable map of New Zealand candidate sites/);
+  assert.match(html, /Selectable map of New Zealand regions and candidate sites/);
 });

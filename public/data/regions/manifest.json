@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "gridlens.region-asset.v2",
+  "edition": "Stats NZ Regional Council 2023 (generalised), 12 nautical miles",
+  "sourceDatasetUrl": "https://datafinder.stats.govt.nz/layer/111182-regional-council-2023-generalised/",
+  "distributionUrl": "https://services.arcgis.com/XTtANUDT8Va4DLwI/arcgis/rest/services/Regional_Council_Boundary/FeatureServer/0",
+  "licence": "Creative Commons Attribution 4.0 International",
+  "attribution": "Stats NZ; distributed by Eagle Technology",
+  "generatedAt": "2026-08-06T21:55:50.967Z",
+  "geometryPrecision": 5,
+  "generalizationToleranceDegrees": 0.0005,
+  "sha256": "dceddef669d914a9b9ca32b2e413e2d8d4926c28ffbe6c94edeaac572364abfd",
+  "featureCount": 17,
+  "regionIds": [
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "99"
+  ],
+  "releaseId": "stats-nz-regional-council-2023-v1"
+}

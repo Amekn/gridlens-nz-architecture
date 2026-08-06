@@ -1,8 +1,9 @@
 # GridLens NZ — Design 1 requirements
 
-**Artifact version:** 0.4 approved
+**Artifact version:** 0.5 approved
 **Status:** Approved at Gate 1
-**Approval evidence:** User message, "Approve Gate 1v.0.4"
+**Approval evidence:** User message, "Approve Gate 1 v0.5"
+**Change source:** User messages requiring developer-managed demo credentials, direct region selection on the map, visible markers, and near-production quality
 **Companion:** `00-idea-brief.md` version 0.4 draft
 **Normative base:** `Shared/GridLens NZ.md`, as amended by the explicit user directions and Daniel transcript integration recorded in `00-idea-brief.md`
 
@@ -10,10 +11,10 @@
 
 - Provide a whole-New-Zealand, map-led early assessment of proposed data-centre People and Planet impacts.
 - Keep engineering calculations, assessment outcomes, provenance states, and safeguards deterministic and reproducible.
-- Make a user-configured LLM/MCP research agent available throughout the product without giving it authority over deterministic results.
+- Make an operator-configured LLM/MCP research agent available without exposing provider credentials or configuration work to ordinary users, and without giving the agent authority over deterministic results.
 - Ground live and prepared evidence in multiple official/public sources with explicit authority, licence, spatial coverage, freshness, and conflict handling.
 - Serve both public and decision-maker needs without changing the underlying record.
-- Preserve Design 1 as an isolated browser-first OpenAI Sites project with no application-owned credential relay or user database.
+- Preserve Design 1 as an isolated OpenAI Sites project with a map-first browser UI, narrowly scoped same-origin agent/research routes, server-only provider secrets, and no user database.
 
 ## Requirement conventions
 
@@ -27,13 +28,13 @@
 
 | ID | Observable requirement | Priority | Acceptance summary |
 |---|---|---:|---|
-| FR-LOC-001 | The application shall provide a whole-New-Zealand map and equivalent accessible list containing all 16 Stats NZ regional council areas plus Chatham Islands / `99 Area Outside Region`. | Must | Pointer, keyboard, touch, list, and coordinate selection resolve to the same named geography. |
+| FR-LOC-001 | The application shall provide a whole-New-Zealand map with visible, individually selectable Stats NZ regional polygons and an equivalent accessible list containing all 16 regional council areas plus Chatham Islands / `99 Area Outside Region`. | Must | Clicking/tapping any visible point inside a polygon, using keyboard/list selection, or resolving coordinates selects the same named geography. |
 | FR-LOC-002 | Every selected geography shall allow scenario entry and deterministic calculation. The UI shall show category-level data coverage as `complete`, `partial`, `stale`, `missing`, or `failed`; it shall not label a whole region unsupported merely because a local source is absent. | Must | A region lacking local water evidence still returns electricity calculations and an explicit missing/partial water status. |
-| FR-LOC-003 | Users shall be able to select a region and optionally place or enter a candidate point within it. The point shall be labelled as a scenario location, not a verified parcel, connection point, consent site, or engineering location. | Must | Moving the point updates spatial context but never fabricates parcel ownership, grid capacity, or consent status. |
+| FR-LOC-003 | Users shall be able to click/tap a region polygon, select its visible marker, use the accessible list, and optionally place or enter a candidate point within it. The point shall be labelled as a scenario location, not a verified parcel, connection point, consent site, or engineering location. | Must | Region, marker, list, and coordinate paths share one stable region ID; moving a point updates spatial context without fabricating parcel ownership, grid capacity, or consent status. |
 | FR-LOC-004 | Region boundaries shall use pinned, versioned Stats NZ geometry. Boundary ties shall resolve deterministically to the lexicographically smallest matching region ID; no nearest-region substitution is allowed. | Must | Exact border fixtures produce stable results across map, list, and coordinate paths. |
 | FR-MAP-001 | The Map Explorer shall search places/projects and display versioned catalog records typed as `existing`, `proposed`, or `candidate`; selecting one shall open a project sheet without leaving the map. | Must | The demo includes at least three catalog records and place/project search resolves to the correct record/location. |
 | FR-MAP-002 | Map layer controls shall support available project, electricity/grid, water, connectivity, population/community, environmental/hazard, consent, community-evidence, company/operator, and evidence-coverage layers. A layer with missing/unlicensed data shall be disabled or qualified, never fabricated. | Must | Each enabled layer identifies source, date, coverage, licence, and confidence; disabled layers show why. |
-| FR-MAP-003 | Existing, proposed, and AI-suggested candidate locations shall use distinct non-colour-only markers; constraint areas and approximate/incomplete boundaries shall have distinct qualified semantics. | Must | Legend, screen-reader label, and marker/polygon behavior agree. |
+| FR-MAP-003 | Existing, proposed, and AI-suggested candidate locations shall use distinct non-colour-only markers that remain visible at the national starting zoom, with clustering or displacement where required; selectable region polygons, constraint areas, and approximate/incomplete boundaries shall have distinct qualified semantics and generous pointer/touch hit targets. | Must | Markers render after first map load, selected and hover/focus states are visible, and legend, screen-reader label, marker, polygon, and hit-target behavior agree. |
 | FR-MAP-004 | The selected-project sheet and compare tray shall show project status, capacity, stage, owner/operator, People/Planet summary, evidence coverage, and actions to open the case file, edit scenario, ask the agent, or compare. | Must | The sheet remains usable with keyboard/touch and does not substitute a numeric sustainability score. |
 | FR-SCN-001 | Users shall configure IT capacity, workload type, utilisation, PUE, cooling method, flexible workload, backup generation, demand response, project stage, staging, ownership type, construction/permanent jobs, investment claim, waste-heat reuse claim, and optional proposal/company identifiers, including 10/50/100 MW presets and custom capacity. | Must | All fields are keyboard/touch operable and have units, definitions, origin, and validation. |
 | FR-SCN-002 | Every input shall display a trusted origin: `User assumption`, `Versioned preset`, `Proposal claim`, `Verified evidence`, or `Calculated`. Origins shall be assigned by application logic and cannot be elevated by editable or restored data. | Must | Forged local records cannot turn a user assertion into verified evidence. |
@@ -114,14 +115,14 @@
 
 | ID | Observable requirement | Priority | Acceptance summary |
 |---|---|---:|---|
-| FR-CONN-001 | The UI shall let a user configure a custom OpenAI-compatible HTTPS base endpoint, API key, model ID, and API dialect (`Responses`, `Chat Completions`, or capability-tested `Auto`). Optional non-secret headers may be supported through an allowlist. | Must | A valid compatible endpoint connects without a code change; an unsupported dialect reports the missing capability. |
-| FR-CONN-002 | The application shall capability-test CORS, authentication, selected dialect, model, streaming, structured output, function/tool calling, and remote-MCP support as applicable; unsupported features shall be disabled rather than assumed. | Must | A chat-only endpoint can still provide non-tool commentary while MCP-dependent actions are visibly unavailable. |
-| FR-CONN-003 | A remote read-only MCP connector shall accept an HTTPS endpoint and supported credential mode. Tavily shall be the tested preset, available either through a model endpoint that supports remote MCP tools or direct CORS-capable Tavily REST fallback. | Must | Search works by at least one supported route and the UI identifies which route was used. |
-| FR-CONN-004 | After a connector’s first successful use, its credential material shall persist across refresh in device-local, origin-bound browser storage by default. The UI shall disclose that browser storage is not an OS keychain and offer a session-only opt-out. | Must | Refresh reuses the connector without re-entry; private/incognito/storage-denied cases fail with guidance. |
-| FR-CONN-005 | Stored secrets shall be masked, unavailable for raw read-back through the UI, excluded from prompt history, logs, telemetry, URLs where headers are supported, scenario/evidence exports, copied briefs, visual specs, diagnostics, and cloud sync. Users can replace, clear one, or clear all connector credentials. | Must | Automated secret-seed tests find no secret outside the credential record or outbound authorized header/request. |
-| FR-CONN-006 | If a provider requires a key-bearing URL, the entire sensitive URL and query shall be treated as secret: display only a sanitized origin/label and redact it from all output. Header or OAuth credential modes are preferred when available. | Must | A Tavily MCP URL containing `tavilyApiKey` never appears in logs, history, or exports. |
-| FR-CONN-007 | External requests shall require a visible per-connector privacy summary describing destination, selected scenario/evidence/prompt content, provider retention uncertainty, and how to cancel/clear. No request may include unrelated saved scenarios or personal data. | Must | Network inspection confirms data minimisation for representative prompts. |
-| FR-CONN-008 | No application-owned relay, server-side credential escrow, or hidden fallback endpoint shall receive user credentials or prompt contents in Design 1. A CORS failure is a hard compatibility failure with recovery guidance. | Must | Requests go only from the browser to the displayed endpoint or from that provider to an approved MCP server. |
+| FR-CONN-001 | Ordinary users shall not enter, view, replace, or understand API keys, provider endpoints, model IDs, MCP URLs, or credential modes. The deployed demo shall be ready to use when operator-managed providers are healthy. | Must | First-run map, deterministic evaluation, Tavily-backed research, and AI explanation work without opening a connector form or entering a credential. |
+| FR-CONN-002 | OpenAI-compatible, Tavily, and optional MCP credentials and endpoints shall be operator-managed server-only configuration. The browser bundle, HTML, runtime responses, URLs, browser storage, logs, exports, and diagnostics shall never contain their raw values. | Must | Exact canary scans and browser/network inspection find no provider secret or private endpoint in client-reachable artifacts or responses. |
+| FR-CONN-003 | The browser shall call versioned same-origin agent/research routes. Those routes shall validate request schemas and size, enforce a fixed provider allowlist, apply time/token/result limits, reject arbitrary destinations and methods, and return only sanitized typed results. | Must | A forged endpoint/header/tool in a browser request is rejected before any outbound provider call. |
+| FR-CONN-004 | Local hackathon development shall derive provider configuration from ignored `TEST.md` without committing, bundling, printing, or returning its values. Hosted deployments shall use encrypted Sites runtime secrets maintained by the operator. | Must | Local and hosted smoke tests use the same public browser contract; repository/build scans contain zero TEST credential values. |
+| FR-CONN-005 | The server adapter shall capability-test the configured model route and expose only a sanitized health/capability state such as `ready`, `limited`, or `unavailable`. Unsupported AI/research features shall degrade visibly while deterministic features remain usable. | Must | Provider 401/403/429/5xx, timeout, malformed response, and missing configuration produce scoped public errors without leaking upstream details. |
+| FR-CONN-006 | Tavily shall be the tested read-only web-index route. Optional remote MCP support shall be operator-allowlisted and limited to named read-only tools; external writes, arbitrary tool discovery, and user-supplied MCP endpoints remain forbidden. | Must | Search works through the configured server route and reports cited source candidates; an unlisted MCP tool is denied. |
+| FR-CONN-007 | The UI shall disclose that prompts and the explicitly selected scenario/evidence context are sent to configured AI/research providers, identify the provider class, support cancellation, and exclude unrelated saved scenarios or personal data. | Must | Representative request inspection proves data minimisation and displays a non-secret provider/status label. |
+| FR-CONN-008 | Operator secret rotation or provider failure shall require no client code change and shall not invalidate deterministic calculations, map selection, evidence provenance, or prepared briefs. | Must | Rotated hosted secrets take effect on a deployment revision; AI-off and research-off paths remain complete and honest. |
 
 ## Results, views, reports, and local persistence
 
@@ -134,7 +135,7 @@
 | FR-RPT-001 | The application shall generate deterministic technical and plain-language impact briefs containing calculations, category outcomes, evidence, assumptions, conflicts, unresolved questions, limitations, and the professional-assessment disclaimer. | Must | Briefs remain complete with AI disabled. |
 | FR-RPT-002 | Optional AI commentary may be included only in a separately labelled, cited section. Deterministic facts and required statements in copied/exported content shall be reconstructed from trusted records, not copied from free-form model text. | Must | Malicious or stale AI output cannot alter the authoritative brief. |
 | FR-RPT-003 | Users shall be able to copy readable text/Markdown; clipboard failure shall expose selectable content and guidance. | Should | Copied output retains units, provenance, citations, AI labels, and disclaimer. |
-| FR-SAVE-001 | Scenario, comparison, connector configuration, credential, research-cache, and optional prompt-history records shall have separate schemas and clear/delete controls. Clearing one class shall not silently remove another. | Must | “Clear credentials” preserves scenarios; “clear all local data” reports exactly what is removed. |
+| FR-SAVE-001 | Scenario, comparison, non-secret UI preference, research-cache, and optional prompt-history records shall have separate schemas and clear/delete controls. Provider configuration and credentials shall never be browser records. | Must | Clearing local data reports exactly what is removed and cannot affect operator-managed provider secrets. |
 | FR-SAVE-002 | Local persistence shall use transactional per-record updates, stable operation IDs, revisions/tombstones, sequential migrations, per-record quarantine, and conflict handling so concurrent tabs cannot silently lose saves or resurrect deletions. | Must | Concurrency, crash-after-commit, migration, quarantine, and delete fixtures pass. |
 | FR-DOC-001 | The release shall include a versioned, pre-ingested set of licensed/public proposal, consent, supporting, and official documents for the deep demonstration Project Case File. Extracted statements shall retain source document, page/section where available, extraction method/version, evidence type, and verification status; document instructions are inert data. | Must | The deep case can be explored from prepared data without AI or live retrieval, and every extracted statement opens its source location or a documented fallback. |
 | FR-DOC-002 | As a stretch capability, users may select local PDF/text proposal or consent documents for browser-side extraction and agent analysis. The app shall disclose exactly what document content is sent externally, require confirmation, and never treat extracted claims as verified. | Could | Declining external transmission still permits local file removal; malformed/injected content cannot issue instructions. |
@@ -143,17 +144,17 @@
 
 | ID | Observable requirement | Acceptance summary |
 |---|---|---|
-| NFR-PER-001 | Deterministic recalculation should complete within 1 second under representative desktop conditions; initial prepared-data results should appear within 5 seconds. | Timed tests run with AI/live feeds delayed or unavailable. |
+| NFR-PER-001 | Deterministic recalculation should complete within 1 second; the selectable region map and markers should become usable within 3 seconds on a representative broadband desktop and within 5 seconds on a representative mobile connection. | Timed cold/warm tests run with AI/live feeds delayed or unavailable and verify that map interaction is never gated on them. |
 | NFR-REL-001 | Identical normalized inputs and a complete reproducibility manifest shall produce identical per-result values, outcomes, reasons, and statuses. | Golden/property tests cover complete, partial, insufficient, and failed results. |
 | NFR-REL-002 | Live/AI/MCP failure shall remain scoped, cancellable, retryable where safe, and shall never hide deterministic output. | Failure injection covers timeout, quota, 401/403/429/5xx, invalid JSON, CORS, offline, and stale response generation. |
 | NFR-ACC-001 | Core journeys shall target WCAG 2.2 AA, keyboard and screen-reader operation, 200–400% zoom resilience, reduced motion, non-colour-only meaning, accessible map/list equivalence, and chart/table/text alternatives. | Automated checks plus manual keyboard, screen-reader, zoom, and touch review. |
 | NFR-SEC-001 | All user, dataset, connector, MCP, model, and visual outputs shall be schema/allowlist validated; generated/retrieved content is inert data. | XSS, prompt injection, tool injection, malicious URL, schema confusion, and oversized-input tests fail closed. |
-| NFR-SEC-002 | The production bundle shall contain no user secret or privileged credential. A restrictive CSP and explicit connection allowlist strategy shall minimise the effect of script injection while accommodating user-approved endpoints. | Bundle scan and browser security tests show no secret leakage or unauthorized destination. |
+| NFR-SEC-002 | Provider secrets and private endpoints shall exist only in operator-controlled local configuration or hosted runtime secrets. A restrictive CSP, same-origin browser API, fixed upstream allowlist, schema validation, and request limits shall minimise script-injection and relay-abuse impact. | Source/bundle/response scans and server/browser security tests show no secret leakage, arbitrary destination, or open-proxy behavior. |
 | NFR-PRI-001 | Core deterministic use shall require no identity or personal information. Device storage and every external processor shall be disclosed, minimized, and individually clearable. | First run works anonymously; privacy inspection matches network/storage behavior. |
 | NFR-EXP-001 | Facts, claims, assumptions, presets, calculations, official findings, web-discourse indicators, and AI interpretations shall be visually and semantically distinct. | Each representative output traces to its origin and cannot be confused by colour alone. |
 | NFR-MNT-001 | Calculation, simulation, assessment, evidence, source-adapter, connector, agent, visualisation, storage, and presentation contracts shall be separately versioned and independently testable using consistent internal units. | Module/dependency and contract tests enforce boundaries. |
 | NFR-MNT-002 | AI/MCP requests and responses shall use explicit versioned schemas, immutable request generations, idempotent operation IDs where possible, and source/evidence references. | Unknown fields/IDs, late responses, duplicate tool results, and malformed partial streams are rejected or quarantined. |
-| NFR-DEP-001 | The application shall build and run on OpenAI Sites as a Cloudflare Worker-compatible browser application in current major desktop/mobile browsers. | Production build and hosted first-run/whole-NZ/connector journeys pass. |
+| NFR-DEP-001 | The application shall build and run on OpenAI Sites as a Cloudflare Worker-compatible application with same-origin agent/research routes and current major desktop/mobile browser support. | Production build and hosted first-run, polygon-selection, marker, deterministic, provider-health, and researched-agent journeys pass. |
 | NFR-OBS-001 | Diagnostics shall contain only non-sensitive error category, connector/source label, status class, module/version, timing, and correlation ID by default—never keys, credential-bearing URLs, prompts, document contents, or scenario contents. | Seeded-secret and content-leak assertions pass. |
 
 ## Constraints
@@ -163,8 +164,8 @@
 | CON-001 | All Design 1 files remain under `design-1-browser-first/`; shared sources are read-only. |
 | CON-002 | `Shared/GridLens NZ.md` remains the architecture/software-design foundation after Gate 1; Daniel’s transcript supplies product requirements and inspiration, not a binding server choice. |
 | CON-003 | No LLM, MCP server, live feed, or AI-generated visual has authority over arithmetic, assessment policy, provenance state, or formal decision language. |
-| CON-004 | Design 1 has no app-owned authentication, application database, credential relay, or server-side proxy. |
-| CON-005 | Runtime browser calls are HTTPS and CORS-compatible; terms, licences, quotas, and attribution are binding. |
+| CON-004 | Design 1 has no app-owned user authentication or application database. Its only privileged server behavior is a narrow same-origin agent/research adapter with operator-managed runtime secrets; it is not a general-purpose proxy. |
+| CON-005 | Browser map/data calls use explicit CORS-compatible public sources or pinned assets. Provider calls originate only from the server adapter to fixed HTTPS destinations; terms, licences, quotas, and attribution remain binding. |
 | CON-006 | Remote tools are read-only and allowlisted. |
 | CON-007 | OpenAI Sites is the delivery target. |
 | CON-008 | Whole-NZ selection does not imply equal evidence fidelity, parcel-level suitability, network connection capacity, water allocation, consent status, or mana-whenua interest mapping. |
@@ -178,14 +179,14 @@
 - Arbitrary AI-generated HTML/code execution or unapproved MCP actions.
 - A national resource-consent scraper where no official uniform API/permission exists.
 - Use of Broadband Map NZ’s availability API for this research purpose under its currently published restrictions.
-- User accounts, server-side collaboration/sharing, app-owned cloud persistence, or credential escrow in Design 1.
+- User accounts, server-side collaboration/sharing, app-owned scenario persistence, or user-provided credentials/endpoints in Design 1.
 - User-supplied proposal/PDF upload and direct public-feedback collection as core release blockers. Prepared documents for the deep demonstration case remain core.
 
 ## End-to-end acceptance criteria
 
 | ID | Criterion | Linked requirements |
 |---|---|---|
-| AC-001 | Select all 16 regional council areas plus Chatham Islands / Area Outside Region by map and accessible list; border fixtures resolve deterministically. | FR-LOC-001–004 |
+| AC-001 | Render visible pinned regional polygons and markers, then select all 16 regional council areas plus Chatham Islands / Area Outside Region by polygon click/tap, marker, keyboard/list, and coordinate resolution; every path shares one stable ID and border fixtures resolve deterministically. | FR-LOC-001–004, FR-MAP-003 |
 | AC-002 | Every geography accepts a scenario and returns deterministic calculations while each evidence category reports its actual coverage. | FR-LOC-002, FR-EVD-010 |
 | AC-003 | The Southland 50 MW fixture returns exactly 65 MW, 455.52 GWh, and 19.5 MW before formatting. | FR-CAL-001–002 |
 | AC-004 | Formula/simulation tests cover normal, exact-boundary, invalid, rounding, energy-conservation, and minimax counterexample cases. | FR-CAL-001–006, NFR-REL-001 |
@@ -194,9 +195,9 @@
 | AC-007 | Stats/LINZ map context, Transpower grid context, EA/EMI prepared data, EM6 live context, and at least one environmental source are integrated or explicitly disabled with a tested reason. | FR-EVD-005–011, FR-EVD-013–015 |
 | AC-008 | A material multi-source conflict displays both definitions, times, geographies, and unresolved/precedence reason; no silent overwrite occurs. | FR-EVD-009 |
 | AC-009 | Evidence freshness uses pinned `as-of`, exact 24/36-month boundaries, `validUntil`, and unknown freshness; stale/unknown evidence cannot support low concern. | FR-EVD-003–004 |
-| AC-010 | Configure a custom compatible model endpoint, test capabilities, successfully prompt it, refresh the page, and use the persisted connector without re-entering the key. | FR-CONN-001–004 |
-| AC-011 | Keys and key-bearing URLs remain masked and absent from logs, prompts, exports, copied briefs, visuals, diagnostics, and unrelated storage; replace/clear-one/clear-all work. | FR-CONN-004–006, NFR-OBS-001 |
-| AC-012 | A non-CORS endpoint is blocked with guidance and no request is relayed through an application server. | FR-EVD-006, FR-CONN-008 |
+| AC-010 | Open the local and hosted demo with no credential entry, observe a sanitized ready/limited/unavailable status, and successfully prompt the operator-configured model when ready. | FR-CONN-001–005 |
+| AC-011 | Exact TEST and hosted-secret canaries remain absent from committed source, client bundles, HTML, responses, browser storage, logs, prompts, exports, copied briefs, visuals, and diagnostics; operator rotation requires no client code change. | FR-CONN-002–005, NFR-OBS-001 |
+| AC-012 | Arbitrary destination, header, method, model, and tool attempts are rejected by the same-origin server contract; upstream failure returns a sanitized scoped error and deterministic workflows remain available. | FR-CONN-003, FR-CONN-005–008 |
 | AC-013 | Tavily-backed search/research works through one supported route, returns cited typed evidence, respects limits/cancellation, and survives quota/timeout failure. | FR-CONN-003, FR-AGT-004–006 |
 | AC-014 | The agent is usable from every workflow stage and can explain, compare, identify gaps, and generate questions without changing authoritative data. | FR-AGT-001–003 |
 | AC-015 | A prompt produces a schema-valid accessible chart/map/table with provenance; arbitrary HTML/JS/XSS and unknown data IDs fail closed. | FR-VIZ-001–003, NFR-SEC-001 |
@@ -221,8 +222,8 @@
 | g1-d05 | Use pinned `as-of`, category-specific 24/36-month freshness windows, `validUntil` override, and explicit unknown freshness. |
 | g3-d01 | An explicit unrestricted fossil-backup assertion may produce conservative high concern when traced to the user assumption. |
 | g3-d02 | Economic high requires exact contradictory current authoritative evidence; jobs above 10,000 remains a warning/moderate unsupported claim; no investment high threshold is invented. |
-| g1-d06 | Credentials persist across refresh in device-local browser storage; direct browser calls remain CORS-only; secrets are masked, never logged/exported/synced, and individually clearable. |
+| g1-d06 | Superseded in v0.5: ordinary users provide no credentials. Local demo configuration is read from ignored `TEST.md`; hosted configuration uses operator-managed runtime secrets; provider calls use narrow same-origin server routes and secrets never reach the browser. |
 | g1-d07 | LLM/MCP is available throughout for research and analysis, while deterministic validated calculations and assessments remain authoritative; include a prompt workspace and dynamic visualisations. |
 | g1-d08 | Support all New Zealand geographies, retain EM6, and use multiple stronger free public sources where available. |
 
-This approved version supersedes the previous Gate 1 v0.3 artifacts. Architecture v0.3 Option A is approved; implementation remains gated only by independent Gate 3 validation.
+Version 0.5 reopens Gate 1 because the user changed credential ownership and the trust boundary after the v0.4 approval. The map requirements also now make polygon selection, initial marker visibility, and working interaction explicit release criteria.

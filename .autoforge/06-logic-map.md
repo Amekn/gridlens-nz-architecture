@@ -1,11 +1,11 @@
 # GridLens NZ — Whole-system logic map
 
-**Artifact version:** 0.10 draft
+**Artifact version:** 0.12 draft
 **Status:** Phase 4 design; awaiting independent Gate 3 validation
-**Approved baseline:** Requirements 0.4, Usage Definition 0.4, Architecture 0.3 Option A
-**Contracts:** `05-contracts.md` version 0.10 draft
+**Approved baseline:** Requirements 0.5, Usage Definition 0.5, Architecture 0.4 Option A
+**Contracts:** `05-contracts.md` version 0.12 draft
 
-**Normative precedence:** the v0.10 reconciliation at the end of this artifact supersedes any conflicting v0.4/v0.5/v0.6/v0.7/v0.8/v0.9 routine or limit.
+**Normative precedence:** the v0.12 reconciliation at the end of this artifact is the effective execution model and retires conflicting v0.4–v0.11 connector, provider, map-selection, registry, cache, and asset-loading logic.
 
 ## Global invariants
 
@@ -2142,3 +2142,556 @@ Every producer checks CTR-021 and CTR-015A budgets. Downloads and compiler rows 
 | G3V09-001 | LOG-AGENT common outbound authorization, request-frozen tool routes and separate accepted/contacted receipts |
 | G3V09-002 | LOG-AGENT pre-allocation alias lookup, bounded request classifications and one receipt per new logical call |
 | G3V09-003 | LOG-PRODUCT closed question matrix and one-pass brief hashing without brief subjects |
+
+## Version 0.11 reconciliation — working map and server-managed provider flow
+
+This section is normative and retires the browser credential vault, connector setup UI, direct browser model/Tavily/MCP fetch, CORS capability probing, per-destination user acceptance, and per-connector secret-clear logic. Existing deterministic calculation, assessment, evidence, report, and safe-visual logic remains valid unless explicitly changed below.
+
+### New and revised invariants
+
+| ID | Invariant |
+|---|---|
+| INV-039 | Exactly the 17 `RegionIdV3` values exist in the pinned region asset; bytes, feature count, IDs, geometry types, coordinate range, edition, and checksum validate before polygon selection is enabled. |
+| INV-040 | Polygon, marker, list, search, coordinate, restore, pointer, touch, and keyboard selection converge on one `SelectRegionCommandV3` and one application selection state; no renderer owns a second truth. |
+| INV-041 | Basemap, region geometry, and marker readiness are independent. Basemap or marker failure cannot disable valid pinned polygon/list selection or deterministic analysis. |
+| INV-042 | Candidate marker symbols remain visible at the national starting zoom and their pointer/touch hit layer is at least 24 CSS pixels in diameter; keyboard/list alternatives expose the same stable ID and outcome. |
+| INV-043 | Provider credentials, raw/private provider endpoint paths, model IDs, authorization headers, upstream bodies, and reasoning channels are server-only and cannot enter any client-reachable graph. |
+| INV-044 | Browser provider requests are same-origin closed-schema operations with no dynamic destination, credential, header, method, model, redirect, or arbitrary tool field. |
+| INV-045 | Server outbound destination, method, path, model, authorization placement, and tool registry derive only from validated operator configuration and code-owned constants. User/model/research content cannot alter them. |
+| INV-046 | A provider failure, cancellation, timeout, quota, malformed response, or unavailable configuration never mutates or hides deterministic map/scenario/result/evidence/report state. |
+| INV-047 | Public errors and logs are created from stable internal categories. They contain no upstream body, secret, private endpoint, prompt/context body, stack, or reasoning text. |
+| INV-048 | Local `TEST.md` is read only by the development configuration boundary. Production modules, client bundles, public assets, archives, responses, logs, tests snapshots, and committed files contain zero exact credential/endpoint canaries from it. |
+| INV-049 | The private hackathon deployment is the current access boundary. Deployment to public anonymous access is blocked until durable rate/cost/abuse controls are approved and tested. |
+
+### LOG-MAP-002 — Load and verify selectable region assets
+
+```text
+loadSpatialAssets(manifest, regionUrl, preparedSites, signal): MapReadinessV1
+  transition basemap, regions, markers independently from idle -> loading
+
+  regionTask := fetch same-origin regionUrl(no-store, signal)
+    require response.status == 200
+    require response bytes <= 2 MiB
+    require sha256(response bytes) == manifest.sha256
+    parse closed RegionFeatureCollectionV3
+    require feature count == 17
+    require exact ID set == manifest.regionIds == RegionIdV3 set
+    for each feature:
+      require feature.id == feature.properties.regionId
+      require Polygon or MultiPolygon, finite coordinates, closed rings
+      require every coordinate lies in declared NZ/Chatham bounds
+    transition regions -> ready(version=manifest.edition,count=17)
+  on any region failure:
+    transition regions -> failed(publicCode=region_asset_invalid,retryable=false)
+
+  markerTask := validate preparedSites
+    require unique SiteId, valid owning RegionIdV3, finite WGS84 point
+    require exact five outcome -> three group mapping
+    transition markers -> ready(count=preparedSites.length)
+  on marker failure:
+    transition markers -> failed(publicCode=marker_asset_invalid,retryable=false)
+
+  basemapTask := initialize external raster source independently
+  on basemap failure:
+    transition basemap -> failed(publicCode=basemap_unavailable,retryable=true)
+
+  interactive := regions.ready OR accessibleKnownRegionIndex.ready
+  return states without waiting for model/research health
+```
+
+Preconditions: the build produced a matching manifest and file; static known region labels are available for accessible fallback. Postconditions: no unverified geometry becomes interactive; a failed basemap cannot blank the pinned overlay. Complexity is O(total geometry coordinates + markers), bounded by the asset byte ceiling and marker pack count.
+
+### LOG-MAP-003 — Install MapLibre layers idempotently
+
+```text
+installGridLensLayers(map, verifiedRegions, preparedSites):
+  on every style.load generation:
+    if source missing, add region source with promoteId="regionId"
+    if source missing, add site source with generateId=false
+    ensure exact layer order:
+      basemap
+      regions-fill            // low-opacity selectable surface
+      regions-outline
+      regions-selected-outline
+      site-hit-targets        // transparent >=24px effective diameter
+      site-halos
+      site-symbols
+      site-labels when collision permits
+    attach each semantic listener once for this style generation
+    set initial feature state for selected/hovered region and selected site
+    publish observed feature and marker counts
+```
+
+The overlay style uses non-colour selection: thicker outline, changed opacity, and selected-region/site text. Map wash/title/legend overlays have `pointer-events:none` except their explicit controls. A marker event handles the marker first and stops any duplicate polygon activation for the same pointer operation.
+
+### LOG-MAP-004 — Canonical region selection
+
+```text
+selectRegion(command: SelectRegionCommandV3, current, generation):
+  validate closed command and RegionIdV3
+  if command.operationId already completed: return prior receipt
+  if command generation < latest accepted generation: return stale_ignored
+
+  if command.selectedSiteId exists:
+    site := preparedSites.byId(command.selectedSiteId)
+    require site.regionId == command.regionId
+  if command.candidatePoint exists:
+    resolved := pointInPinnedRegions(command.candidatePoint)
+    require resolved matches command.regionId using lexical border tie
+
+  next := RegionSelectionV3(command fields, manifest.edition, now)
+  atomically replace application selection and latest generation
+  renderer sets region/site feature state
+  scenario/evaluation selectors derive from next.regionId/siteId
+  accessible status announces region, exact outcome/group when site selected
+  if source is list/search/restore and region not visible:
+    fit verified geometry bounds with reduced-motion-safe duration
+  if regionId == "99":
+    focus the Chatham/Area Outside Region inset or wrapped geometry
+  return accepted receipt
+```
+
+Pointer flow: query rendered marker hit layer first; if a marker exists dispatch its site/region command; otherwise query region fill layer and dispatch polygon command. Clicking ocean/outside recognized geometry changes nothing and gives no nearest-region substitution. List/search/coordinate sources call the same operation.
+
+### LOG-MAP-005 — Visible readiness and recovery
+
+| Regions | Markers | Basemap | Public state |
+|---|---|---|---|
+| ready | ready | ready | Full map interaction |
+| ready | ready | failed | Pinned polygons and markers on neutral background; retry basemap control |
+| ready | failed | any | Polygon/list interaction; visible marker-pack error |
+| failed | ready | any | Markers/list only; geometry-dependent point selection disabled and qualified |
+| failed | failed | any | Accessible region index and deterministic preset paths only; map error panel |
+
+No empty unlabeled map is a valid terminal state. A retry creates a new asset generation; late work from an older generation is discarded.
+
+### LOG-CONFIG-002 — Resolve operator provider configuration
+
+```text
+resolveOperatorConfig(env): ConfigOutcome
+  read named server bindings only
+  trim and validate configured values without logging them
+  require model base URL is HTTPS, fixed origin/path policy passes,
+          no userinfo/fragment, model ID length valid, API key nonempty
+  Tavily base URL is compile-time constant; optional key enables research
+  optional MCP URL must match operator allowlist and allowedTools exact subset
+  return server-only OperatorProviderConfigV1
+  on missing/invalid values:
+    return unavailable categories without returning offending value
+```
+
+Local development logic:
+
+```text
+loadLocalDemoBindings():
+  execute only inside Vite/Worker configuration when mode=development
+  if ignored TEST.md exists:
+    parse the three labelled values in memory
+    map them to Worker environment bindings
+    emit only boolean presence diagnostics
+  else configure providers unavailable
+```
+
+The parser module is excluded from client and production Worker import graphs. Hosted values come from Sites runtime secrets. Secret rotation changes environment revision, not browser code or storage.
+
+### LOG-PROVIDER-001 — Public health projection
+
+```text
+getProviderHealth(request, env): ProviderHealthResponseV1
+  require same-origin request context
+  if valid cached sanitized health age <=30s: return it
+  config := resolveOperatorConfig(env)
+  for each configured provider within a shared short deadline:
+    run minimum capability call with server credentials
+    map result to ready|limited|unavailable and public capabilities
+    never include URL, model ID, status body, header or secret
+  cache sanitized projection only
+  return closed ProviderHealthResponseV1
+```
+
+Health is advisory. Each ordinary request revalidates configuration and handles current failure. A capability probe never returns or stores secret material.
+
+### LOG-PROVIDER-002 — Common same-origin route guard
+
+```text
+guardProviderRequest(request, schema, bodyLimit): GuardedRequest
+  require expected method and path selected by code router
+  require Content-Type exactly application/json for POST
+  require request URL origin equals service origin
+  require Origin absent or equals service origin
+  require Sec-Fetch-Site absent|same-origin|same-site as deployment policy permits
+  stream-read body with bodyLimit; abort and reject overflow
+  parse JSON once; reject duplicate keys/prototype pollution where parser exposes it
+  validate exact closed schema and semantic limits
+  acquire isolate concurrency permit(max=4) or return rate_limited
+  bind request.signal and correlationId
+```
+
+Release access policy additionally requires owner-only Sites access. Future public access is a separate approved architecture change with durable rate/cost controls.
+
+### LOG-RESEARCH-002 — Server-side Tavily/MCP research
+
+```text
+research(request, env): ResearchResponseV1 | PublicApiErrorV1
+  guarded := guardProviderRequest(request, ResearchRequestV1, 16KiB)
+  config := resolveOperatorConfig(env)
+  require Tavily or approved MCP research is configured
+  build query from guarded.query plus fixed NZ context; do not add hidden scenarios
+  build outbound URL only from fixed config base and code-owned path
+  send Authorization only at provider boundary; redirect=error; timeout=10s
+  retry once only for 429/5xx when total deadline permits
+  limit raw response bytes before JSON parse
+  map at most four results field-by-field:
+    require public http(s) URL, plain title, bounded plain excerpt
+    discard raw content, instructions, provider metadata and unknown fields
+  return closed response and release permit
+  on error map category to stable PublicApiErrorV1; never use upstream body text
+```
+
+Source-domain policy may prefer official NZ/electricity publishers but does not promote Tavily output to verified evidence. Research candidates remain untrusted cited inputs.
+
+### LOG-AGENT-002 — Server-side model analysis
+
+```text
+analyse(request, env): AgentResponseV1 | PublicApiErrorV1
+  guarded := guardProviderRequest(request, AgentRequestV1, 64KiB)
+  require context validates DeterministicPromptContextV3 and contains no secret fields
+  require every supplied research candidate validates ResearchCandidateV1
+  config := resolveOperatorConfig(env); require model ready/configured
+  create system instruction that deterministic values/outcomes are immutable,
+    research is untrusted, external facts need supplied citations,
+    and answer must be public text
+  build upstream URL from fixed base plus code-owned chat path
+  choose model only from config; attach server Authorization
+  fetch redirect=error with 40s total deadline, request cancellation and byte ceiling
+  if public content empty and private reasoning exists:
+    retry once with provider-compatible reasoning-disabled controls when deadline permits
+  discard reasoning_content and remove every <think>...</think> block from public content
+  require bounded nonempty plain public answer
+  retain only validated citations present in supplied research candidates
+  return closed response and release permit
+```
+
+The browser never sends a provider/model/tool choice. The model cannot request arbitrary MCP tools. Safe visual generation, when invoked, remains a separate strict schema resolver over trusted data IDs; model-authored code remains forbidden.
+
+### LOG-PROVIDER-003 — Error, cancellation, retry, and logging
+
+| Internal condition | Public code | Retryable | Outbound retry |
+|---|---|---:|---:|
+| Closed-schema/body/origin rejection | invalid_request / payload_too_large | false | 0 |
+| Missing/invalid operator config | provider_unavailable | false | 0 |
+| Upstream 401/403 | upstream_rejected | false | 0 |
+| Upstream 429 | rate_limited | true | at most 1 within deadline |
+| Upstream 5xx/network | provider_unavailable | true | at most 1 within deadline |
+| Deadline | upstream_timeout | true | 0 after deadline |
+| Invalid/oversized upstream | invalid_upstream_response | false | 0 |
+| Request signal aborted | cancelled | false | 0 |
+
+Immediately before each outbound attempt increment an in-memory attempt counter; release the concurrency permit in `finally`. Log only route ID, provider class, public/internal category, status class, duration bucket, retry count, and correlation ID. Never log request/response bodies or configuration values.
+
+### LOG-MIGRATION-001 — Retire browser connector state
+
+```text
+migrateClientStateToV11(db):
+  within one IndexedDB transaction:
+    delete connector-settings records and device-key records
+    remove connector schema registrations and pending clear journals
+    preserve scenario, comparison, non-secret preference and research-cache records
+    write migration receipt with counts only, no values
+  remove connector modal/routes from navigation
+  replace with non-interactive provider status control and disclosure
+```
+
+If deletion fails, AI UI remains disabled and the app shows a local-data cleanup error; deterministic/map use continues. No legacy secret is read back into React state during migration.
+
+### v0.11 worked cases
+
+1. **Interior polygon click:** click inside Waikato with no marker under pointer → `regionId=03`, source `polygon_pointer`; the Waikato outline, panel, scenario and evaluation update once.
+2. **Marker over polygon:** click Auckland marker → one command with Auckland site and `regionId=02`; the underlying region click is suppressed.
+3. **Basemap blocked:** raster request fails → neutral background plus verified region fills/markers remains interactive; no empty-map terminal state.
+4. **Chatham selection:** activate region `99` through its mapped inset/list → same RegionSelectionV3 and geometry edition; missing evidence stays explicit.
+5. **Forged agent endpoint:** browser adds `endpoint` or `model` → closed-schema rejection, zero outbound attempts.
+6. **TEST canary:** local config loads values in memory; client bundle/public response/source scan returns zero exact matches.
+7. **Model reasoning-only first result:** first public content empty → one bounded reasoning-disabled retry; only final public content is returned, with reasoning discarded.
+8. **Tavily outage:** research returns scoped unavailable; prompt may still explain prepared deterministic context; outcome and map selection remain unchanged.
+
+### v0.11 traceability
+
+| Requirement / acceptance | Logic and invariants |
+|---|---|
+| FR-LOC-001–004, FR-MAP-001–004, AC-001/023 | LOG-MAP-002–005, INV-039–042 |
+| FR-CONN-001–008, AC-010–013 | LOG-CONFIG-002, LOG-PROVIDER-001–003, LOG-RESEARCH-002, LOG-AGENT-002, INV-043–049 |
+| FR-SAVE-001–002, AC-020 | LOG-MIGRATION-001 plus existing non-secret storage logic |
+| NFR-PER-001, NFR-REL-002, NFR-ACC-001 | independent map readiness, bounded provider work, LOG-MAP-002–005 |
+| NFR-SEC-001–002, NFR-PRI-001, NFR-OBS-001, AC-011/012/021 | LOG-CONFIG-002, LOG-PROVIDER-002–003, INV-043–049 |
+| NFR-DEP-001 | single Worker route topology and v0.11 migration/deployment flow |
+
+## Version 0.12 reconciliation — closed map and orchestrated provider logic
+
+This section implements CTR-029–036 and closes G3V11-001–012. INV-039–049 remain only where consistent with the following invariants.
+
+### Revised invariants
+
+| ID | Invariant |
+|---|---|
+| INV-050 | `RegionId` is the only current geography identity. Map, scenario, evidence, results, routes, caches, prompts, visuals, reports, and exports serialize the same two-character value. |
+| INV-051 | The selection store allocates every monotonic generation. A lower generation never commits; one operation ID returns one byte-identical receipt. |
+| INV-052 | Pointer and coordinate selections derive region from all pinned polygon matches and the lexical boundary rule; renderer feature order and caller-provided region are never authority. |
+| INV-053 | Project and screened-candidate markers are distinct closed variants. A polygon/list/search selection clears marker selection; marker selection derives its owning region from the verified marker pack. |
+| INV-054 | Region manifest, geometry, and markers are one immutable core release generation. Only verified candidate bytes activate; the prior active generation remains available offline and after candidate failure. |
+| INV-055 | The public/client schema graph is exactly `GridLensPublicContractV3`; the server configuration graph is exactly `GridLensServerContractV1` and is unreachable from the client graph. |
+| INV-056 | Provider destinations are exact approved public HTTPS origins and paths. No request/model/tool content can select a destination, method, header, model, tool, redirect, or retry. |
+| INV-057 | Agent research is performed server-side in the same operation. `/agent` never accepts browser research candidates and model citations can reference only sanitized candidates minted in that operation. |
+| INV-058 | Every provider leaf and final response byte stream passes the active-secret/private-endpoint egress guard; a match discards the whole result without logging the match. |
+| INV-059 | Each provider has at most one outbound attempt per public operation. Raw byte, time, concurrency, and structured-result bounds apply before public projection. |
+| INV-060 | Tavily/MCP use `server_provider`; current caches/routes contain no connector identity. Legacy cache content is stale/nonrefreshable or quarantined, never silently rebound. |
+
+### LOG-SCHEMA-003 — Compile the only effective roots
+
+```text
+compileEffectiveContracts(): artifacts
+  publicGraph := transitiveClosure(GridLensPublicContractV3)
+  require every reference declared exactly once
+  require all JSON encodings closed, bounded, duplicate-aware and finite
+  reject retired connector/vault/acceptance/connector-route roots
+  emit TypeScript + strict JSON Schema + runtime decoders from publicGraph
+
+  serverGraph := transitiveClosure(GridLensServerContractV1)
+  require server-only module boundary and no React/RSC/client import path
+  emit TypeScript/runtime guards only; emit no JSON Schema or public serializer
+
+  compile explicit deterministic adapters using RegionId exactly
+```
+
+Any unresolved scalar, open object, ambiguous set encoding, `any`, connector import, or server-to-client dependency fails the build.
+
+### LOG-ASSET-003 — Prepare, activate, and recover core spatial assets
+
+```text
+prepareSpatialRelease(sourceBytes, releaseId): candidate
+  verify Stats layer identity, licence, 17 exact source codes and names
+  normalize source codes 1..9 -> 01..09 once; retain 12..18 and 99
+  transform to WGS84; generalize at 0.0005 degrees; precision=5
+  compute a valid label point inside each region geometry
+  compile exact RegionFeatureCollectionV3 and MarkerPackV3
+  hash canonical prepared bytes; bind manifest/geometry/markers to releaseId
+  reject any missing/duplicate/invalid/mismatched item
+
+activateSpatialRelease(candidate): activation receipt
+  fetch immutable same-origin core assets through the release cache
+  stream-hash bytes before parse and validate closed schemas
+  atomically mark the complete generation active
+  retain prior verified active generation for rollback/offline
+  transport failure => retryable scoped error; integrity/schema failure => nonretryable candidate rejection
+
+bootSpatialRelease(): active assets
+  prefer active verified cached generation
+  network checks may discover a newer manifest without bypassing active cache
+  never use no-store for an already active immutable region asset
+```
+
+### LOG-SELECT-003 — Allocate and commit canonical selection
+
+```text
+dispatchSelection(intentWithoutGeneration): SelectionReceiptV3
+  generation := selectionStore.nextGeneration()
+  operationId := caller id or new UUIDv7
+  command := exact intent + generation
+
+  if operationId exists:
+    if canonical command hash matches, return prior byte-identical receipt
+    else return invalid receipt
+
+  if command source is polygon pointer/touch:
+    require pointerPoint and no requestedRegionId
+    matches := pointInAllVerifiedRegions(pointerPoint)
+    regionId := lexicalMinimum(matches)
+    if no match, return invalid without changing selection
+  else if command source is coordinate:
+    matches := pointInAllVerifiedRegions(point)
+    next := matches empty
+      ? unresolved_point(point, outside_verified_regions)
+      : selected_region(lexicalMinimum(matches), candidatePoint=point)
+  else if marker source:
+    marker := verifiedMarkerPack.byId(markerId)
+    next := selected_region(marker.regionId, selectedMarkerId=markerId)
+  else:
+    require requestedRegionId; next := selected_region(requestedRegionId); clear marker
+
+  if generation < selectionStore.latestGeneration: return stale_ignored receipt
+  atomically commit next + generation + receipt
+  derive map state, scenario, evidence, prompt context and exports from next
+```
+
+Rapid pointer/list/search/restore permutations, shared-edge feature-order permutations, duplicate commands, and stale async callbacks use this function. An unresolved point remains visible and never fabricates a region.
+
+### LOG-PROVIDER-004 — Validate server configuration and route origin
+
+```text
+resolveServerContract(env): GridLensServerContractV1 | unavailable categories
+  parse configured URL once
+  require https, DNS hostname (not IP literal), port 443, no userinfo/fragment
+  reject localhost and private/loopback/link-local/reserved host forms
+  split exact origin and normalized base path
+  require path in provider-class code-owned allowed path table
+  bind model/tool IDs only from server config
+  local serve may map ignored TEST.md values at Vite/Worker config boundary only
+  hosted run reads Sites runtime secrets only
+  never log or serialize parsed values
+
+guardBrowserPost(request, exactSchema, bodyLimit): guarded
+  require private Sites edge already authenticated request
+  require method/path/content-type exact
+  require Origin == request URL origin and Sec-Fetch-Site == same-origin
+  or require server-only local smoke token for headerless test client
+  duplicate-aware stream parse within bodyLimit
+  validate exact GridLensPublicContractV3 member; acquire one of four permits
+```
+
+CORS/preflight is denied. Incoming URL origin alone is never treated as initiator proof. Deployment validation resolves every configured hostname and rejects non-public address classes before saving/deploying environment revision; redirects remain disabled on every fetch.
+
+### LOG-RESEARCH-003 — Standalone and in-operation research
+
+```text
+runServerResearch(query, contextIds, operationBudget): internal candidates
+  require approved Tavily or exact pinned MCP operation
+  build destination/method/headers/tool name solely from server contract
+  enforce one attempt, 10 s, 16 KiB request, 256 KiB raw response
+  for MCP require exact remote tool name + input/output schema hashes
+  parse bounded upstream fields
+  classify official_candidate only by code-owned exact public host registry
+  create internal citation IDs; treat every candidate as unverified
+  run egress guard over every leaf and serialized projection
+  return sanitized internal candidates or whole-operation safe error
+
+POST /research:
+  guarded request -> runServerResearch -> public ResearchResponseV3
+  persist optional ResearchCacheRecordV3 with server route and response hash only
+```
+
+### LOG-AGENT-003 — Server-orchestrated structured analysis
+
+```text
+POST /agent:
+  guarded := guardBrowserPost(AgentRequestV3, 64 KiB)
+  recompute deterministic context fingerprint from canonical fields
+  reject mismatch or any unclosed/untrusted context field
+  if includeWebResearch:
+    citations := runServerResearch(prompt + bounded region context, ids, shared budget)
+  else citations := []
+
+  build mode-specific system/schema instruction
+  send deterministic context + sanitized citations to exact model path
+  enforce one model attempt, 40 s, 96 KiB request, 256 KiB raw response
+  discard reasoning/private fields before parsing public structured JSON
+  validate exact requested-mode response:
+    claim IDs unique; claim kinds legal
+    every citation ID resolves to this operation's citations
+    source_statement requires citation; inference/uncertainty visibly labelled
+    site_profile payload required only for site_profile mode
+    visual payload required only for visual mode and contains no code/HTML/expression
+    contextFingerprint equals recomputed value
+  run active-secret/private-endpoint egress guard on decoded leaves and final bytes
+  return AgentResponseV3; never accept or echo browser research candidates
+```
+
+If research fails, the response may continue only with `partial=true`, zero research citations, explicit uncertainty, and unchanged deterministic state. If structured model output fails, return a safe scoped error; do not fall back to untyped narrative for structured modes.
+
+### LOG-EGRESS-001 — Whole-result secret rejection
+
+```text
+guardPublicEgress(value, serverContract): safe bytes
+  forbidden := exact active keys/credentials/model IDs/endpoints/origin/path/query/auth values
+  patterns := declared credential-shaped patterns
+  canonicalBytes := serialize closed public value
+  scan each decoded string leaf and canonicalBytes, including adjacent-field/chunk joins
+  if any exact or pattern match:
+    destroy value/bytes; emit invalid_upstream_response metadata only
+  else return canonicalBytes
+```
+
+Health, research, agent, errors, diagnostics, traces, screenshots, labels, and logs use the same guard. Test harnesses report only boolean canary absence.
+
+### LOG-HEALTH-002 — Total sanitized health projection
+
+```text
+getHealth(): ProviderHealthResponseV3
+  one canonical entry per configured class; no duplicates
+  probe each provider at most once per 60-second cache generation
+  map class to legal capabilities and stable reason
+  overall := model unavailable ? unavailable
+             : model limited or any optional not ready ? limited
+             : ready
+  egress-guard response and cache sanitized projection only
+```
+
+### LOG-MIGRATION-002 — Connector retirement without dangling cache references
+
+```text
+migrateToV3(storage): receipt
+  delete legacy secrets, device keys, connector configuration/routes and clear journals
+  remove connector-settings workflow route
+  for each legacy research cache:
+    if content/provenance can be retained without connector/secret fields:
+      convert to legacy_stale inspectable record; refreshable=false
+    else quarantine with reason/count only
+  for scenario/result/preference geography:
+    map only by frozen explicit RegionId table; otherwise quarantine
+  preserve valid non-secret deterministic records
+  write counts-only receipt atomically
+```
+
+### Performance and recovery budgets
+
+- Representative desktop broadband: region overlay plus selectable marker/list readiness <=3.0 s cold and <=1.0 s warm.
+- Representative mobile connection/profile: same readiness <=5.0 s cold and <=2.0 s warm.
+- Basemap readiness is measured separately and cannot block region readiness.
+- Selection dispatch-to-visible-state <=100 ms for list/marker and <=250 ms for polygon coordinate resolution at the prepared geometry ceiling.
+- Provider timeouts never block deterministic calculation, selection, evidence, or report interaction.
+
+### v0.12 traceability
+
+| Requirement / review closure | Logic |
+|---|---|
+| G3V11-001/002/003/004/010/012; FR-LOC/MAP; AC-001/002/023 | LOG-SCHEMA-003, LOG-ASSET-003, LOG-SELECT-003, INV-050–055, budgets |
+| G3V11-005/006/007/008/011; FR-CONN/AGT/VIZ; AC-010–015/017/018/021/026 | LOG-PROVIDER-004, LOG-RESEARCH-003, LOG-AGENT-003, LOG-EGRESS-001, LOG-HEALTH-002, INV-055–059 |
+| G3V11-009; FR-SAVE; AC-020 | LOG-MIGRATION-002, INV-060 |
+| `g3v11-d01` | exact public origin/DNS/path validation and no redirect/retry |
+| `g3v11-d02` | same-operation server research; no browser candidate input |
+
+## Version 0.12.1 blocker closure logic
+
+CTR-037–042 replace the affected v0.12 routines as follows:
+
+1. `compileEffectiveContracts` now compiles `GridLensPublicContractV3`, its embedded `GridLensDeterministicContractV3`, every named legacy-to-V3 adapter, current storage/route/cache roots, and all transitive references in one build. The only accepted legacy geography spellings are the three CTR-037 variants; every unknown identity quarantines the containing record.
+2. `dispatchSelection` accepts only `CallerSelectionIntentV3`. The store checks operation replay, allocates `selectionGeneration`, computes `canonicalIntentHash`, and constructs the internal `StampedSelectionCommandV3`. No caller can submit a generation or irrelevant field. Marker-pack validation enforces canonical order, unique IDs, prefix/variant equality, and point-in-declared-region before selection is enabled.
+3. Agent context projection walks the exact selected stage closure and emits `DeterministicPromptContextV4`: every sent deterministic value, evidence statement, authority/freshness/origin label, snapshot hash, and disclaimer is visible and fingerprinted. Valid scenario bounds are 100,000 MW, PUE 5, and 4,380,000 GWh. Site-profile, guided, and visual modes require their exclusive CTR-039 payload. Visual resolution reads trusted values from verified context bindings; model numbers are never authoritative inputs.
+4. Registry compilation validates all exact 17 `SourceRegistryEntryV4` rows and conditional mode/state fields. Route restoration resolves immutable IDs/hashes before rendering. Current research cache provider/route/hash/time invariants validate atomically; legacy cache migration emits only `legacy_stale` or quarantine.
+5. Research sanitization parses every returned URL as `PublicClickableUrlV3`; unsafe URLs discard their candidate and can never reach DOM/copy/export. A claim referencing a discarded citation rejects the response.
+6. Spatial activation verifies `SpatialReleaseManifestV3.manifestHash`, then each exact asset byte length/hash/schema, then closed geometry/marker cross-references. The cache/rollback unit is manifest plus both assets; no plain release label or self-declared asset hash grants trust.
+
+### Additional invariants
+
+| ID | Invariant |
+|---|---|
+| INV-061 | Every current deterministic/storage/route root and every permitted legacy adapter is reachable from the effective V3 compile graph; unlisted legacy roots reject. |
+| INV-062 | Caller selection intents are source-discriminated and generation-free; only the store stamps comparable commands. Marker IDs are unique, variant-prefixed, and spatially consistent. |
+| INV-063 | Prompt context is lossless for the selected stage within approved bounds and immutable record closure; mode payloads cannot substitute for one another. |
+| INV-064 | Model-authored visual candidates contain bindings only; rendered values come from trusted context records with matching field/unit/snapshot. |
+| INV-065 | Registry, route, current cache, legacy-stale cache, and quarantine states are all closed V3 roots with no connector dependency. |
+| INV-066 | Clickable citation URLs are public HTTPS DNS-host URLs and are never treated as fetch authority. |
+| INV-067 | Spatial release identity is the verified manifest hash plus its two exact asset bindings; partial or mixed activation is impossible. |
+
+### v0.12.1 counterexample closure
+
+- `select_region + coordinate`, marker without ID, extra caller region, and cross-source fields fail the discriminated decoder.
+- Duplicate or prefix-mismatched marker IDs and markers outside their declared region reject the pack.
+- A 20,000 MW/PUE 4 scenario and the approved maximum values project without truncation; context fingerprint covers every sent record.
+- A visual binding to an unrelated record/field/unit/hash rejects before rendering.
+- A Tavily response cannot use an MCP route; refreshability is derived from current-vs-legacy kind.
+- `http://127.0.0.1`, localhost, IP literals, private/reserved host forms, fragments, userinfo, or non-443 citation URLs never become links.
+- Swapping valid geometry or marker bytes from another release fails the manifest asset hash.
+
+### Version 0.12.2 storage-root closure
+
+`StoredEnvelopeV3` is the exact CTR-043 live/tombstone union. Storage admission validates the store/payload discriminant, canonical payload hash, revision, timestamps, and absence of all deletion fields on live records or payload fields on tombstones. Legacy values can enter only after a successful named CTR-037 adapter receipt; connector-bearing or unknown-geography payloads quarantine. No generic or arbitrary JSON storage path exists.

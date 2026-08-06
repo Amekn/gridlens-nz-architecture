@@ -24,14 +24,15 @@ npm test
 1. Change the 65 MW scenario and show the annual-energy and flexible-load calculations update.
 2. Select Auckland, Waikato, then a purple candidate directly on the whole-NZ map to show the three separate assessment groups.
 3. Open **Evaluation** to explain the five transparent impact lenses and the prepared-evidence disclaimer.
-4. Open **Connectors**, enter an OpenAI-compatible endpoint and optional Tavily key, then use **Generate insight**.
-5. Refresh the page and show that encrypted connector settings remain available on the same device.
+4. Open **Built-in AI** to show that the operator-managed model and web-research services are ready.
+5. Use **Generate insight**, then switch to **Visualization** to render a model-guided chart from deterministic scenario values.
 
 ## Trust boundaries
 
 - Deterministic rules own site outcomes; the LLM cannot change them.
-- Credentials are encrypted in IndexedDB with a non-extractable device key and are cached only after a successful endpoint test.
-- Requests go directly from the browser to CORS-enabled endpoints; no application relay receives the keys.
+- Users never enter provider endpoints or credentials. The browser calls narrow same-origin routes and the Worker owns the model and research credentials.
+- Local development reads the ignored `TEST.md` file at the server/config boundary only. Hosted deployments use protected Sites environment variables.
+- The production Worker accepts only approved public HTTPS provider origins, applies strict request/response validation, and prevents configured secrets from reaching public responses.
 - Tavily research is restricted to an allow-list of New Zealand public-sector and electricity-system domains.
 - Demonstration values are illustrative, not live grid capacity offers or development approvals.
 

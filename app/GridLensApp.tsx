@@ -16,7 +16,6 @@ import {
   MapPin,
   Network,
   Search,
-  Settings2,
   ShieldCheck,
   Sparkles,
   Users,
@@ -31,15 +30,14 @@ import {
   type SitePresentationGroup,
 } from "@/src/domain";
 import {
-  clearConnectorSettings,
-  loadConnectorSettings,
-  runOpenAiPrompt,
-  saveConnectorSettings,
-  searchTavily,
-  testOpenAiConnection,
-  type ConnectorSettings,
-  type WebEvidence,
-} from "@/src/connectors/browserVault";
+  getProviderHealth,
+  runAgent,
+  type AgentPayload,
+  type ProviderHealth,
+  type ResearchCandidate,
+  type RegionId,
+} from "@/src/client/providerApi";
+import { REGION_BY_ID, regionIdForName } from "@/src/map/regions";
 import { NzMap, type MapSite } from "./NzMap";
 
 const GROUP_LABELS: Record<SitePresentationGroup, string> = {
@@ -54,15 +52,6 @@ const OUTCOME_LABELS: Record<SiteDomainOutcome, string> = {
   infrastructure_upgrade_required: "Infrastructure upgrade required",
   insufficient_evidence: "Insufficient evidence",
   excluded: "Excluded",
-};
-
-const EMPTY_SETTINGS: ConnectorSettings = {
-  endpoint: "",
-  apiKey: "",
-  model: "",
-  tavilyApiKey: "",
-  mcpEndpoint: "",
-  mcpApiKey: "",
 };
 
 type CategoryStatus = "low" | "moderate" | "high" | "insufficient";
@@ -127,6 +116,48 @@ function titleCase(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function AgentPayloadView({ payload }: { payload: AgentPayload }) {
+  if (payload.kind === "table") {
+    return <figure className="agent-visual">
+      <figcaption>{payload.title}</figcaption>
+      <div className="agent-table-wrap"><table><thead><tr>{payload.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+        <tbody>{payload.rows.map((row, rowIndex) => <tr key={`${rowIndex}-${row.join("-")}`}>{row.map((cell, cellIndex) => <td key={`${cellIndex}-${cell}`}>{cell}</td>)}</tr>)}</tbody>
+      </table></div>
+    </figure>;
+  }
+  if (payload.kind === "site_profile_candidate") {
+    return <figure className="agent-visual"><figcaption>Region profile candidate</figcaption><p>{payload.summary}</p></figure>;
+  }
+  const values = payload.series.flatMap((series) => series.values.map((entry) => entry.value));
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const span = maximum - minimum || 1;
+  if (payload.kind === "line_chart") {
+    return <figure className="agent-visual">
+      <figcaption>{payload.title}</figcaption>
+      <svg className="agent-line-chart" viewBox="0 0 100 100" role="img" aria-label={payload.title}>
+        <path d="M8 8 V90 H96" className="chart-axis" />
+        {payload.series.map((series, seriesIndex) => {
+          const points = series.values.map((entry, index) => {
+            const x = 10 + (index / Math.max(1, series.values.length - 1)) * 84;
+            const y = 88 - ((entry.value - minimum) / span) * 76;
+            return `${x},${y}`;
+          }).join(" ");
+          return <polyline key={series.name} points={points} className={`chart-series series-${seriesIndex % 3}`} />;
+        })}
+      </svg>
+      <div className="chart-key">{payload.series.map((series) => <span key={series.name}>{series.name}</span>)}</div>
+    </figure>;
+  }
+  const absoluteMaximum = Math.max(...values.map(Math.abs), 1);
+  return <figure className="agent-visual">
+    <figcaption>{payload.title}</figcaption>
+    <div className="agent-bars">{payload.series.flatMap((series) => series.values.map((entry) => <div className="agent-bar" key={`${series.name}-${entry.label}`}>
+      <span>{entry.label}</span><i><b style={{ width: `${Math.max(3, Math.abs(entry.value) / absoluteMaximum * 100)}%` }} /></i><strong>{entry.value.toLocaleString()}</strong>
+    </div>))}</div>
+  </figure>;
+}
+
 export function GridLensApp() {
   const [scenario, setScenario] = useState<ScenarioInput>({
     name: "AI compute campus",
@@ -136,32 +167,46 @@ export function GridLensApp() {
     concurrencyRatio: 0.3,
   });
   const evaluation = useMemo(() => evaluateScenario(scenario), [scenario]);
-  const [selectedSiteId, setSelectedSiteId] = useState("demo-southland-invercargill");
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>("demo-southland-invercargill");
+  const [selectedRegionId, setSelectedRegionId] = useState<RegionId>("15");
   const [activeView, setActiveView] = useState<"scenario" | "results">("scenario");
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [settings, setSettings] = useState<ConnectorSettings>(EMPTY_SETTINGS);
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "cached" | "error">("idle");
-  const [connectionMessage, setConnectionMessage] = useState("Not connected");
+  const [providerHealth, setProviderHealth] = useState<ProviderHealth | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "cached" | "error">("testing");
+  const [connectionMessage, setConnectionMessage] = useState("Checking built-in services…");
   const [prompt, setPrompt] = useState("Explain the main trade-offs for this site and suggest the next evidence to collect.");
   const [agentResponse, setAgentResponse] = useState("");
+  const [agentMode, setAgentMode] = useState<"analysis" | "visual">("analysis");
+  const [agentPayload, setAgentPayload] = useState<AgentPayload | undefined>();
   const [agentBusy, setAgentBusy] = useState(false);
-  const [agentSources, setAgentSources] = useState<WebEvidence[]>([]);
+  const [agentSources, setAgentSources] = useState<ResearchCandidate[]>([]);
   const [researchNotice, setResearchNotice] = useState("");
 
   useEffect(() => {
-    void loadConnectorSettings().then((cached) => {
-      if (!cached) return;
-      setSettings(cached);
-      setConnectionStatus("cached");
-      setConnectionMessage("Cached securely on this device");
+    const controller = new AbortController();
+    void getProviderHealth(controller.signal).then((health) => {
+      setProviderHealth(health);
+      const model = health.providers.find((provider) => provider.providerClass === "openai_compatible");
+      setConnectionStatus(model?.state === "ready" ? "cached" : model?.state === "limited" ? "idle" : "error");
+      setConnectionMessage(
+        health.overall === "ready" ? "Built-in AI and research ready"
+          : health.overall === "limited" ? "AI ready with limited research"
+            : "AI services unavailable; deterministic evaluation remains ready",
+      );
+    }).catch(() => {
+      setConnectionStatus("error");
+      setConnectionMessage("AI services unavailable; deterministic evaluation remains ready");
     });
+    return () => controller.abort();
   }, []);
 
-  const selectedAssessment =
-    evaluation.assessments.find((entry) => entry.candidate.id === selectedSiteId) ?? evaluation.assessments[0];
-  const categories = categoryViews(selectedAssessment);
+  const selectedAssessment = selectedSiteId
+    ? evaluation.assessments.find((entry) => entry.candidate.id === selectedSiteId)
+    : undefined;
+  const selectedRegionName = REGION_BY_ID[selectedRegionId].displayName;
+  const categories = selectedAssessment ? categoryViews(selectedAssessment) : [];
   const groupCounts = {
     passes_declared_constraints: evaluation.groups.passes_declared_constraints.length,
     needs_investigation: evaluation.groups.needs_investigation.length,
@@ -172,9 +217,11 @@ export function GridLensApp() {
     id: entry.candidate.id,
     name: entry.candidate.name,
     region: entry.candidate.region,
+    regionId: regionIdForName(entry.candidate.region),
     latitude: entry.candidate.latitude,
     longitude: entry.candidate.longitude,
     presentationGroup: GROUP_LABELS[entry.presentationGroup],
+    domainOutcome: entry.domainOutcome,
   }));
 
   const filteredAssessments = evaluation.assessments.filter((entry) => {
@@ -183,71 +230,82 @@ export function GridLensApp() {
   });
 
   function updateScenario(field: keyof ScenarioInput, value: string | number) {
-    setScenario((current) => ({ ...current, [field]: value }));
-  }
-
-  async function testAndCacheConnection() {
-    setConnectionStatus("testing");
-    setConnectionMessage("Testing direct browser connection…");
-    try {
-      const models = await testOpenAiConnection(settings);
-      const resolved = { ...settings, model: settings.model || models[0] || "local-model" };
-      await saveConnectorSettings(resolved);
-      setSettings(resolved);
-      setConnectionStatus("cached");
-      setConnectionMessage(`Connected${models.length ? ` • ${models.length} model${models.length === 1 ? "" : "s"}` : ""}`);
-    } catch (error) {
-      setConnectionStatus("error");
-      setConnectionMessage(error instanceof Error ? error.message : "Connection failed");
+    if (field === "name") {
+      setScenario((current) => ({ ...current, name: String(value) }));
+      return;
     }
+    const parsed = typeof value === "number" ? value : Number(value.trim());
+    const bounds: Record<Exclude<keyof ScenarioInput, "name">, readonly [number, number]> = {
+      itCapacityMw: [1, 1000],
+      pue: [1, 3],
+      utilizationRatio: [0.1, 1],
+      concurrencyRatio: [0.05, 1],
+    };
+    const [minimum, maximum] = bounds[field];
+    if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
+      setScenario((current) => ({ ...current }));
+      return;
+    }
+    setScenario((current) => ({ ...current, [field]: parsed }));
   }
 
-  async function clearConnection() {
-    await clearConnectorSettings();
-    setSettings(EMPTY_SETTINGS);
-    setConnectionStatus("idle");
-    setConnectionMessage("Local connector cache cleared");
+  function selectSite(siteId: string) {
+    setSelectedSiteId(siteId);
+    const assessment = evaluation.assessments.find((entry) => entry.candidate.id === siteId);
+    const regionId = assessment ? regionIdForName(assessment.candidate.region) : undefined;
+    if (regionId) setSelectedRegionId(regionId);
+  }
+
+  function selectRegion(regionId: RegionId, _source: string, selectedSite?: string) {
+    setSelectedRegionId(regionId);
+    setSelectedSiteId(selectedSite ?? null);
   }
 
   async function askAgent() {
-    if (connectionStatus !== "cached") {
-      setSettingsOpen(true);
-      return;
-    }
     setAgentBusy(true);
     setAgentResponse("");
+    setAgentPayload(undefined);
     setAgentSources([]);
     setResearchNotice("");
     try {
-      let webEvidence: WebEvidence[] = [];
-      if (settings.tavilyApiKey) {
-        try {
-          webEvidence = await searchTavily(
-            settings.tavilyApiKey,
-            `${prompt} ${selectedAssessment.candidate.name} ${selectedAssessment.candidate.region} New Zealand infrastructure`,
-          );
-          setAgentSources(webEvidence);
-          setResearchNotice(
-            webEvidence.length
-              ? `${webEvidence.length} current web evidence candidate${webEvidence.length === 1 ? "" : "s"} included`
-              : "No current web evidence candidates returned",
-          );
-        } catch {
-          setResearchNotice("Web index unavailable; analysis used prepared evidence");
-        }
-      }
-      const context = JSON.stringify({
-        scenario: evaluation.normalizedScenario,
+      const result = await runAgent(prompt, {
+        schemaVersion: "gridlens.prompt-context.v3",
+        scenario: {
+          scenarioId: "current-demo",
+          name: evaluation.normalizedScenario.name,
+          itCapacityMw: evaluation.normalizedScenario.itCapacityMw,
+          pue: evaluation.normalizedScenario.pue,
+          utilizationRatio: evaluation.normalizedScenario.utilizationRatio,
+          concurrencyRatio: evaluation.normalizedScenario.concurrencyRatio,
+        },
         calculations: evaluation.calculations,
-        site: selectedAssessment.candidate.name,
-        region: selectedAssessment.candidate.region,
-        deterministicOutcome: selectedAssessment.domainOutcome,
-        presentationGroup: selectedAssessment.presentationGroup,
-        reasons: selectedAssessment.reasons,
-        evidenceNotice: selectedAssessment.candidate.evidence.notice,
-        webEvidence: webEvidence.map(({ title, url, content }) => ({ title, url, content })),
-      });
-      setAgentResponse(await runOpenAiPrompt(settings, prompt, context));
+        selection: {
+          kind: "selected_region",
+          regionId: selectedRegionId,
+          source: "accessible_list",
+          geometryEdition: "Stats NZ Regional Council 2023 generalised",
+          selectedAt: new Date().toISOString(),
+        },
+        ...(selectedAssessment ? {
+          selectedCandidate: {
+            candidateId: `candidate:${selectedAssessment.candidate.id}`,
+            domainOutcome: selectedAssessment.domainOutcome,
+            presentationGroup: selectedAssessment.presentationGroup,
+            reasons: selectedAssessment.reasons.map((reason) => reason.message),
+          },
+        } : {}),
+        trustedEvidenceIds: ["evidence:prepared-demo"],
+      }, providerHealth?.providers.some(
+        (provider) => provider.providerClass === "tavily" && provider.state === "ready",
+      ) ?? false, agentMode);
+      setAgentSources(result.citations);
+      setResearchNotice(
+        result.citations.length
+          ? `${result.citations.length} current web evidence candidate${result.citations.length === 1 ? "" : "s"} included`
+          : result.partial ? "Web index unavailable; analysis used prepared evidence" : "Analysis used prepared evidence",
+      );
+      setAgentResponse(result.claims.map((claim) => claim.text).join("\n\n"));
+      setAgentPayload(result.payload);
     } catch (error) {
       setAgentResponse(error instanceof Error ? error.message : "The agent request failed.");
     } finally {
@@ -269,25 +327,33 @@ export function GridLensApp() {
         <nav className="top-actions" aria-label="Application tools">
           <button className="quiet-button" onClick={() => setSourcesOpen(true)}><Database size={16} /> Sources <span>17</span></button>
           <button className="quiet-button" onClick={() => setSettingsOpen(true)}>
-            <Settings2 size={16} /> Connectors <i className={`status-light ${connectionStatus}`} />
+            <Network size={16} /> Built-in AI <i className={`status-light ${connectionStatus}`} />
           </button>
         </nav>
       </header>
 
       <section className="workspace">
         <div className="map-column">
-          <NzMap sites={mapSites} selectedSiteId={selectedSiteId} onSelect={setSelectedSiteId} />
+          <NzMap
+            sites={mapSites}
+            selectedSiteId={selectedSiteId ?? ""}
+            selectedRegionId={selectedRegionId}
+            onSelect={selectSite}
+            onSelectRegion={selectRegion}
+          />
           <div className="map-insight-card">
             <div className="insight-icon"><MapPin size={19} /></div>
             <div>
-              <span className="eyebrow">Selected candidate</span>
-              <strong>{selectedAssessment.candidate.name}</strong>
-              <p>{selectedAssessment.candidate.region} • {OUTCOME_LABELS[selectedAssessment.domainOutcome]}</p>
+              <span className="eyebrow">{selectedAssessment ? "Selected candidate" : "Selected region"}</span>
+              <strong>{selectedAssessment?.candidate.name ?? selectedRegionName}</strong>
+              <p>{selectedAssessment
+                ? `${selectedAssessment.candidate.region} • ${OUTCOME_LABELS[selectedAssessment.domainOutcome]}`
+                : "Region-level view • Select a marker for site screening"}</p>
             </div>
-            <div className={`group-pill ${selectedAssessment.presentationGroup}`}>
-              {GROUP_LABELS[selectedAssessment.presentationGroup]}
+            <div className={`group-pill ${selectedAssessment?.presentationGroup ?? "region-only"}`}>
+              {selectedAssessment ? GROUP_LABELS[selectedAssessment.presentationGroup] : "region only"}
             </div>
-            <button className="icon-button" onClick={() => setActiveView("results")} aria-label="Open selected site results"><ChevronRight /></button>
+            <button className="icon-button" onClick={() => setActiveView("results")} aria-label="Open selected region results"><ChevronRight /></button>
           </div>
         </div>
 
@@ -343,7 +409,7 @@ export function GridLensApp() {
                 </div>
                 <div className="site-list" aria-label="Accessible candidate site list">
                   {filteredAssessments.slice(0, 7).map((entry) => (
-                    <button key={entry.candidate.id} className={entry.candidate.id === selectedSiteId ? "selected" : ""} onClick={() => setSelectedSiteId(entry.candidate.id)}>
+                    <button key={entry.candidate.id} className={entry.candidate.id === selectedSiteId ? "selected" : ""} onClick={() => selectSite(entry.candidate.id)}>
                       <i className={`site-status ${entry.presentationGroup}`} />
                       <span><strong>{entry.candidate.region}</strong><small>{OUTCOME_LABELS[entry.domainOutcome]}</small></span>
                       <ChevronRight size={16} />
@@ -353,58 +419,80 @@ export function GridLensApp() {
               </section>
 
               <div className="panel-cta-wrap">
-                <button className="primary-button" onClick={() => setActiveView("results")}>Evaluate selected site <ArrowRight size={17} /></button>
+                <button className="primary-button" onClick={() => setActiveView("results")}>{selectedAssessment ? "Evaluate selected site" : "Explore selected region"} <ArrowRight size={17} /></button>
                 <p>Deterministic rules • No AI scoring • Separate groups</p>
               </div>
             </div>
           ) : (
             <div className="panel-scroll">
-              <section className="panel-section result-hero">
-                <div className="result-kicker"><span className={`site-status ${selectedAssessment.presentationGroup}`} />{selectedAssessment.candidate.region}</div>
-                <h1>{selectedAssessment.candidate.name}</h1>
-                <div className={`outcome-banner ${selectedAssessment.presentationGroup}`}>
-                  <div>{selectedAssessment.presentationGroup === "excluded" ? <Ban /> : selectedAssessment.presentationGroup === "needs_investigation" ? <AlertTriangle /> : <Check />}</div>
-                  <span><small>Deterministic site outcome</small><strong>{OUTCOME_LABELS[selectedAssessment.domainOutcome]}</strong></span>
-                </div>
-                <p className="result-reason">{selectedAssessment.reasons[0]?.message}</p>
-              </section>
+              {selectedAssessment ? <>
+                <section className="panel-section result-hero">
+                  <div className="result-kicker"><span className={`site-status ${selectedAssessment.presentationGroup}`} />{selectedAssessment.candidate.region}</div>
+                  <h1>{selectedAssessment.candidate.name}</h1>
+                  <div className={`outcome-banner ${selectedAssessment.presentationGroup}`}>
+                    <div>{selectedAssessment.presentationGroup === "excluded" ? <Ban /> : selectedAssessment.presentationGroup === "needs_investigation" ? <AlertTriangle /> : <Check />}</div>
+                    <span><small>Deterministic site outcome</small><strong>{OUTCOME_LABELS[selectedAssessment.domainOutcome]}</strong></span>
+                  </div>
+                  <p className="result-reason">{selectedAssessment.reasons[0]?.message}</p>
+                </section>
 
-              <section className="metric-ribbon results">
-                <div><span>Capacity margin</span><strong>{selectedAssessment.capacityMarginMw.toFixed(1)} <small>MW</small></strong></div>
-                <div><span>Evidence coverage</span><strong>{selectedAssessment.candidate.evidence.coveragePercent}<small>%</small></strong></div>
-                <div><span>Added peak</span><strong>{evaluation.calculations.addedPeakMw.toFixed(1)} <small>MW</small></strong></div>
-              </section>
+                <section className="metric-ribbon results">
+                  <div><span>Capacity margin</span><strong>{selectedAssessment.capacityMarginMw.toFixed(1)} <small>MW</small></strong></div>
+                  <div><span>Evidence coverage</span><strong>{selectedAssessment.candidate.evidence.coveragePercent}<small>%</small></strong></div>
+                  <div><span>Added peak</span><strong>{evaluation.calculations.addedPeakMw.toFixed(1)} <small>MW</small></strong></div>
+                </section>
 
-              <section className="panel-section">
-                <div className="section-heading"><div><span className="eyebrow">Five transparent lenses</span><h2>Impact assessment</h2></div><span>5</span></div>
-                <div className="category-list">
-                  {categories.map((category) => {
-                    const Icon = category.icon;
-                    return <div className="category-row" key={category.id}>
-                      <div className={`category-icon ${category.status}`}><Icon size={17} /></div>
-                      <span><strong>{category.label}</strong><small>{category.detail}</small></span>
-                      <em className={category.status}>{titleCase(category.status)}</em>
-                    </div>;
-                  })}
-                </div>
-              </section>
+                <section className="panel-section">
+                  <div className="section-heading"><div><span className="eyebrow">Five transparent lenses</span><h2>Impact assessment</h2></div><span>5</span></div>
+                  <div className="category-list">
+                    {categories.map((category) => {
+                      const Icon = category.icon;
+                      return <div className="category-row" key={category.id}>
+                        <div className={`category-icon ${category.status}`}><Icon size={17} /></div>
+                        <span><strong>{category.label}</strong><small>{category.detail}</small></span>
+                        <em className={category.status}>{titleCase(category.status)}</em>
+                      </div>;
+                    })}
+                  </div>
+                </section>
+              </> : <>
+                <section className="panel-section result-hero">
+                  <div className="result-kicker"><span className="site-status needs_investigation" />Region {selectedRegionId}</div>
+                  <h1>{selectedRegionName}</h1>
+                  <div className="outcome-banner needs_investigation">
+                    <div><MapPin /></div>
+                    <span><small>Region-level selection</small><strong>No candidate site selected</strong></span>
+                  </div>
+                  <p className="result-reason">Select a map marker to run deterministic site screening, or ask the agent a region-level research question below.</p>
+                </section>
+                <section className="metric-ribbon results">
+                  <div><span>Added peak</span><strong>{evaluation.calculations.addedPeakMw.toFixed(1)} <small>MW</small></strong></div>
+                  <div><span>Annual energy</span><strong>{evaluation.calculations.annualEnergyGwh.toFixed(2)} <small>GWh</small></strong></div>
+                  <div><span>Flexible load</span><strong>{evaluation.calculations.maximumFlexibleLoadMw.toFixed(1)} <small>MW</small></strong></div>
+                </section>
+              </>}
 
               <section className="panel-section ai-zone">
                 <div className="ai-heading"><div className="ai-mark"><Sparkles size={18} /></div><div><span className="eyebrow">Source-aware AI workspace</span><h2>Explore this result</h2></div></div>
+                <div className="agent-mode-switch" role="group" aria-label="Agent output mode">
+                  <button type="button" aria-pressed={agentMode === "analysis"} onClick={() => setAgentMode("analysis")}>Analysis</button>
+                  <button type="button" aria-pressed={agentMode === "visual"} onClick={() => setAgentMode("visual")}>Visualization</button>
+                </div>
                 <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} aria-label="Prompt the GridLens AI agent" />
                 <div className="ai-actions">
                   <button className="primary-button ai" onClick={() => void askAgent()} disabled={agentBusy}>
                     {agentBusy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}
-                    {connectionStatus === "cached" ? "Generate insight" : "Connect AI endpoint"}
+                    {connectionStatus === "cached" ? agentMode === "visual" ? "Create visualization" : "Generate insight" : connectionStatus === "testing" ? "Checking AI service" : "AI service unavailable"}
                   </button>
-                  <span><Network size={14} />{settings.tavilyApiKey || settings.mcpEndpoint ? "Web research enabled" : "Prepared evidence only"}</span>
+                  <span><Network size={14} />{providerHealth?.providers.some((provider) => provider.providerClass !== "openai_compatible" && provider.state === "ready") ? "Web research enabled" : "Prepared evidence only"}</span>
                 </div>
                 {agentResponse && <div className="agent-response">
                   <span>Agent analysis</span>
                   <p>{agentResponse}</p>
                   {researchNotice && <small>{researchNotice}</small>}
+                  {agentPayload && <AgentPayloadView payload={agentPayload} />}
                   {agentSources.length > 0 && <div className="agent-sources" aria-label="Web evidence candidates">
-                    {agentSources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}<ExternalLink size={12} /></a>)}
+                    {agentSources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">{source.title}<ExternalLink size={12} /></a>)}
                   </div>}
                 </div>}
               </section>
@@ -418,19 +506,19 @@ export function GridLensApp() {
       {settingsOpen && (
         <div className="modal-backdrop" role="presentation">
           <section className="modal-card connector-modal" role="dialog" aria-modal="true" aria-labelledby="connector-title">
-            <button className="modal-close" onClick={() => setSettingsOpen(false)} aria-label="Close connector settings"><X /></button>
-            <div className="modal-heading"><div className="modal-icon"><Network /></div><div><span className="eyebrow">Direct browser connections</span><h2 id="connector-title">AI & web research</h2><p>Credentials are encrypted on this device after the first successful connection.</p></div></div>
-            <div className="connector-status"><i className={connectionStatus} /><span><strong>{connectionStatus === "cached" ? "Ready" : connectionStatus === "testing" ? "Testing" : connectionStatus === "error" ? "Needs attention" : "Not connected"}</strong><small>{connectionMessage}</small></span></div>
-            <div className="connector-grid">
-              <label className="field-label full">OpenAI-compatible endpoint<input type="url" placeholder="https://your-endpoint.example/v1" value={settings.endpoint} onChange={(event) => setSettings({ ...settings, endpoint: event.target.value })} /></label>
-              <label className="field-label">API key<input type="password" autoComplete="off" placeholder="Stored after success" value={settings.apiKey} onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })} /></label>
-              <label className="field-label">Model ID<input placeholder="Selects first available model" value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} /></label>
-              <label className="field-label full connector-divider"><span>Tavily API key <small>optional web index</small></span><input type="password" autoComplete="off" placeholder="Direct CORS research" value={settings.tavilyApiKey} onChange={(event) => setSettings({ ...settings, tavilyApiKey: event.target.value })} /></label>
-              <label className="field-label">MCP server endpoint<input type="url" placeholder="https://…/mcp" value={settings.mcpEndpoint} onChange={(event) => setSettings({ ...settings, mcpEndpoint: event.target.value })} /></label>
-              <label className="field-label">MCP credential<input type="password" autoComplete="off" placeholder="Optional bearer token" value={settings.mcpApiKey} onChange={(event) => setSettings({ ...settings, mcpApiKey: event.target.value })} /></label>
+            <button className="modal-close" onClick={() => setSettingsOpen(false)} aria-label="Close service status"><X /></button>
+            <div className="modal-heading"><div className="modal-icon"><Network /></div><div><span className="eyebrow">Operator-managed services</span><h2 id="connector-title">AI & web research</h2><p>The demo is configured by its maintainer. Users never need API keys, endpoints, or model settings.</p></div></div>
+            <div className="connector-status"><i className={connectionStatus} /><span><strong>{connectionStatus === "cached" ? "Ready" : connectionStatus === "testing" ? "Checking" : connectionStatus === "error" ? "Unavailable" : "Limited"}</strong><small>{connectionMessage}</small></span></div>
+            <div className="source-list">
+              {(providerHealth?.providers ?? []).map((provider) => (
+                <div className="source-row" key={provider.providerClass}>
+                  <div className="source-icon"><Network size={16} /></div>
+                  <span><strong>{titleCase(provider.providerClass)}</strong><small>{provider.capabilities.map(titleCase).join(" • ") || "No public capability"}</small></span>
+                  <em>{titleCase(provider.state)}</em>
+                </div>
+              ))}
             </div>
-            <div className="privacy-callout"><ShieldCheck size={17} /><span><strong>Browser-first privacy boundary</strong><small>No app relay. Only CORS-enabled endpoints can be contacted; keys never enter reports or URLs.</small></span></div>
-            <div className="modal-actions"><button className="text-button danger" onClick={() => void clearConnection()}>Clear local cache</button><button className="primary-button" disabled={!settings.endpoint || connectionStatus === "testing"} onClick={() => void testAndCacheConnection()}>{connectionStatus === "testing" ? <LoaderCircle className="spin" /> : <Zap />} Test & cache securely</button></div>
+            <div className="privacy-callout"><ShieldCheck size={17} /><span><strong>Same-origin security boundary</strong><small>Provider credentials stay in the private Sites Worker. The browser receives only sanitized status, cited research, and labelled analysis.</small></span></div>
           </section>
         </div>
       )}

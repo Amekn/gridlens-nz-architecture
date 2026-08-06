@@ -1,11 +1,11 @@
 # GridLens NZ — Test strategy
 
-**Artifact version:** 0.10 draft
+**Artifact version:** 0.12 draft
 **Status:** Phase 4 design; awaiting independent Gate 3 validation
-**Approved baseline:** Requirements 0.4, Usage Definition 0.4, Architecture 0.3 Option A
-**Contracts and logic:** `05-contracts.md` and `06-logic-map.md` version 0.10 draft
+**Approved baseline:** Requirements 0.5, Usage Definition 0.5, Architecture 0.4 Option A
+**Contracts and logic:** `05-contracts.md` and `06-logic-map.md` version 0.12 draft
 
-**Normative precedence:** the v0.10 reconciliation at the end of this artifact supersedes any conflicting v0.4/v0.5/v0.6/v0.7/v0.8/v0.9 fixture or release condition.
+**Normative precedence:** the v0.12 reconciliation at the end of this artifact is the effective release matrix and retires conflicting v0.4–v0.11 connector, provider, map, registry, cache, and asset-loading fixtures.
 
 ## Quality strategy
 
@@ -698,3 +698,146 @@ These are presentation groups only. Every candidate still displays one exact dom
 - Re-test G3V08-001 through G3V08-004: one agent cancellation terminal, exact per-destination disclosure/read-only routing, connector/vault clear dependency, and strict locator/layer/text/company product closure.
 - Re-test G3V09-001 through G3V09-003: every model/tool outbound authorization transition and single frozen tool route, satisfiable same-call replay accounting before/after restart, and the exact acyclic question scope/subject matrix.
 - Give the independent reviewer only the current raw artifacts and require a fresh requirement/AC enumeration plus a `validated` verdict.
+
+## Version 0.11 reconciliation — production-shaped map and provider adapter
+
+This section is normative for the Gate 1 v0.5 and Gate 2 v0.4 baseline. It retires tests that require a user connector form, browser credential vault, arbitrary user-supplied endpoint, direct browser-to-provider call, or checkbox/drop-down geography selector. Historical tests remain useful only where they do not conflict with this section.
+
+### Fixed fixtures and independent oracles
+
+| Fixture/test family | Required proof |
+|---|---|
+| `DATA-REGION-V11` | The pinned Stats NZ Regional Council 2023 dataset provenance and Eagle Technology ArcGIS distribution URL are exact; source `REGC_code` values `1`–`9` normalize only to `01`–`09`, while `12`–`18` and `99` remain unchanged. The prepared GeoJSON and manifest hash verify before parse; the collection contains exactly the 17 `RegionIdV3` values; every feature has a unique canonical ID and name, valid Polygon/MultiPolygon geometry, and a usable label point. Hash, count, source-field, normalization, ID, geometry, or schema mutation rejects the new asset without replacing the last valid asset. |
+| `UT-MAP-V11` | Layer installation is idempotent and ordered fill -> boundary -> markers -> selected/hover state. National markers remain visible at initial zoom and meet the documented pointer target. Selection by polygon, marker, list fallback, and restored route produces the same canonical `regionId`. |
+| `IT-MAP-V11` | Polygon interior, shared edge, marker, rapid repeated selection, keyboard list selection, style reload, stale async completion, missing WebGL, geometry failure, and basemap failure are exercised. The selected region and deterministic scenario stay usable; stale generations cannot overwrite current state. |
+| `A11Y-MAP-V11` | Every region is selectable without a pointer through a synchronized semantic list, focus is visible, status changes are announced, non-colour state is present, and the map has a meaningful name and instructions. |
+| `CT-PROVIDER-V11` | Each same-origin route accepts only its closed method, content type, schema, byte limit, field limits, and enumerated operation. Unknown fields, malformed JSON, unsupported methods, and oversized bodies are rejected before any upstream call. Responses validate against the closed public schemas and expose no internal configuration fields. |
+| `SEC-PROVIDER-V11` | Attempts to choose an arbitrary destination, header, authorization value, HTTP method, model, tool, redirect target, or MCP operation make zero upstream calls. Cross-origin requests, unsafe redirects, response oversize, request oversize, prompt-injected routing, and upstream HTML/errors produce bounded safe failures. Reasoning-channel/private provider fields are removed. |
+| `IT-PROVIDER-V11` | Mock OpenAI-compatible, Tavily, and allowlisted MCP upstreams cover success, missing configuration, invalid credential, timeout, upstream 4xx/5xx, malformed response, disconnect/cancel, bounded retry, and recovery. Exactly the allowed provider is contacted and deterministic scenario evaluation remains available for every failure. |
+| `E2E-V11` | A fresh session shows no credential or endpoint form, shows sanitized provider readiness, renders visible national markers and 17 selectable regions, supports polygon and marker selection, runs deterministic evaluation, performs research/agent requests through `/api/v1/*`, displays evidence/failure states honestly, and survives refresh without asking the user for configuration. |
+| `SEC-SECRET-V11` | Local tests can parse `TEST.md` canaries into server-only bindings without printing values. Canary scans require zero matches in tracked source, client bundles/source maps, `public/`, rendered HTML, response bodies/headers, browser storage, browser diagnostics, logs, exports, screenshots, release archives, and deployment metadata. Test output reports only pass/fail and sanitized provider labels. |
+| `PKG-DEPLOY-V11` | Fresh local and Sites builds prove the Worker routes and static app share one origin; hosted configuration comes only from Sites runtime secrets; `TEST.md` is ignored and absent from artifacts; the private demo access boundary is enabled; health/map/agent/research smoke tests pass from the deployed origin. |
+
+### Contract and security test matrix
+
+1. `GET /api/v1/providers/health` requires no request body, never probes arbitrary destinations, and returns only stable provider IDs, readiness states, capability labels, and a sanitized reason code.
+2. `POST /api/v1/research` and `POST /api/v1/agent` reject credentials, endpoints, headers, models, tool definitions, URLs used as destinations, and unknown keys anywhere in the request. User prompt/source URLs remain untrusted content, never routing authority.
+3. Upstream clients are constructed from the exact server-side allowlist. URL parsing, DNS/redirect behavior supported by the platform, method, header, content type, timeout, retry count, request bytes, response bytes, and model/tool choice are bounded before use.
+4. The response projector retains supported answer/evidence/citation fields, strips provider reasoning and diagnostics, limits item/text sizes, and converts all upstream failures to a closed safe error vocabulary.
+5. Server diagnostics use request IDs, provider ID, outcome class, duration bucket, and byte/count metrics only. Seeded key, endpoint path/query, prompt, response text, and source content canaries must not occur.
+6. The application shell and deterministic domain have no import path to server secret/configuration modules. A client-bundle dependency scan enforces this boundary.
+7. Anonymous public deployment is a release blocker. The hackathon build may deploy only behind the approved private Sites access boundary until durable authentication, rate, cost, and abuse controls are separately designed and approved.
+
+### Map correctness and failure containment
+
+- A coordinate oracle chooses the canonical Stats region using the pinned polygons and the same `regionId` consumed by scenarios, markers, list items, route restoration, result panels, and exports.
+- A feature-state oracle proves hover and selection survive style/layer reinstallation without duplicate event handlers or duplicate sources/layers.
+- At national initial zoom, the marker fixture measures rendered presence and pointer targets rather than merely asserting that GeoJSON exists.
+- If the basemap fails but geometry is valid, the region overlay and semantic list remain selectable with an explicit degraded-background notice. If geometry verification fails, the semantic list remains available and no unverified region shape is rendered.
+- Marker and polygon clicks stop at one canonical selection transition; map background clicks do not fabricate a region.
+
+### Acceptance-criteria trace
+
+| Approved acceptance criterion | Required v0.11 proof |
+|---|---|
+| AC-001, FR-LOC-001, FR-LOC-003 | `DATA-REGION-V11`, `UT-MAP-V11`, `IT-MAP-V11`, `A11Y-MAP-V11`, `E2E-V11`. |
+| FR-MAP-003 | Marker rendered-size/pointer-target assertions plus marker-click and national-zoom E2E evidence. |
+| AC-010, FR-CONN-001–005 | Zero-credential local/hosted E2E, sanitized readiness, successful OpenAI-compatible agent path, and `PKG-DEPLOY-V11`. |
+| AC-011 | `SEC-SECRET-V11` client-bundle/storage/network/log/export canary scan, rotation fixture, and absence of all credential/endpoint controls in E2E. |
+| AC-012 | `CT-PROVIDER-V11`, `SEC-PROVIDER-V11`, and failure-containment E2E reject arbitrary routing authority and preserve deterministic use. |
+| AC-013, FR-CONN-006–008 | Tavily/allowlisted MCP research success, limits, cancellation, sanitized citations, and quota/timeout recovery through `IT-PROVIDER-V11`. |
+| NFR security/deployment constraints | Fixed-destination negative suite, closed schemas, safe errors, private deployment gate, and Sites runtime-secret packaging proof. |
+
+### Gate 3 independent review checklist v0.11
+
+- Enumerate every Gate 1 v0.5 requirement and acceptance criterion against `05-contracts.md`, `06-logic-map.md`, and this strategy; identify omissions rather than relying on the trace table.
+- Challenge region identity, geometry verification, map readiness, visible-marker, keyboard fallback, stale-generation, and basemap/geometry failure behavior with concrete counterexamples.
+- Challenge the same-origin adapter for secret exposure, open-proxy behavior, prompt-controlled routing, SSRF/redirect/header/model/tool injection, unbounded use, reasoning leakage, retries, cancellation, and deterministic fallback.
+- Confirm local `TEST.md` and hosted Sites secrets are mutually exclusive configuration sources and neither can enter client/runtime public artifacts.
+- Confirm all superseded browser vault, user connector form, arbitrary endpoint, direct CORS provider, and checkbox/drop-down region contracts are explicitly retired.
+- Require a fresh independent verdict of `validated`, `validated-with-nonmaterial-edits`, or `blocked`, with exact artifact references and proposed corrections for every finding.
+
+## Version 0.12 reconciliation — Gate 3 closure and release matrix
+
+This matrix is normative for CTR-029–036 and LOG-SCHEMA/ASSET/SELECT/PROVIDER/RESEARCH/AGENT/EGRESS/HEALTH/MIGRATION v0.12.
+
+### Closed-schema and graph proof
+
+| Test family | Required proof |
+|---|---|
+| `CT-GRAPH-V12` | Generate TypeScript, strict JSON Schema, and runtime decoders from only `GridLensPublicContractV3`. Every transitive reference resolves once. Mutation-import each retired connector/vault/acceptance/connector-route root, `any`, open object, duplicate key, ambiguous set, undeclared scalar, server secret/config type, NaN/infinity, coercion, and prototype key; each fails. Compile `GridLensServerContractV1` separately and prove no React/RSC/client/public-schema/storage import path. |
+| `CT-ROUTES-V12` | Round-trip every exact health/research/agent/error request/response and every mode/payload/claim/citation variant. Unknown fields, duplicate keys, wrong mode payload, missing context fingerprint, unresolved citation, source statement without citation, unlabelled inference, research candidate in agent input, URL/provider/model/header/tool field, and oversized scalar/array reject before network. |
+| `CT-REGISTRY-CACHE-V12` | Tavily/MCP use only `server_provider`; WorkflowRouteV3 contains no connector settings. ResearchCacheRecordV3 contains one fixed server route and no connector/acceptance/secret field. V2 migration produces only stale/nonrefreshable inspectable content or quarantine and never a dangling refresh action. |
+
+### Map, identity, asset, and marker proof
+
+| Test family | Required proof |
+|---|---|
+| `DATA-SPATIAL-V12` | Fetch the exact Stats NZ layer/distribution fixture; prove 17 source codes/names, `1..9 -> 01..09`, retained `12..18/99`, precision 5, tolerance 0.0005, valid in-geometry label points, exact licence/attribution, prepared hashes, and one release ID across manifest/geometry/markers. Wrong foreign field family, source URL, code normalization, label point, licence, hash, or release ID rejects. |
+| `MODEL-SELECTION-V12` | Model arbitrary interleavings of pointer/list/search/coordinate/restore with monotonic generations, UUID replay/conflict, late asset callbacks, and stale handlers. The highest accepted generation is the only committed selection and replay bytes are identical. |
+| `GEO-TIE-V12` | Permute every rendered-feature order at shared boundaries; pointer intents always carry WGS84 point and derive lexical-minimum region from all geometry matches. Caller-supplied pointer region rejects. Outside coordinates produce `unresolved_point` with the exact point; no nearest region. |
+| `MARKER-V12` | Round-trip existing project, proposed project, and screened candidate markers. Project markers need no fabricated assessment; candidate outcomes map exactly to three groups. Every marker ID/row/hit target/source record resolves once. Marker selection derives region; polygon/list/search clears marker. |
+| `OFFLINE-SPATIAL-V12` | Online activation -> offline reload returns byte-identical active verified core assets. Candidate network failure is retryable; checksum/schema failure is nonretryable and cannot replace active. Basemap failure leaves polygons/markers/list usable. No-store applies only to release discovery, never the active immutable asset. |
+| `PERF-MAP-V12` | On the representative profiles, assert selectable region/marker/list readiness <=3.0 s desktop cold, <=1.0 s desktop warm, <=5.0 s mobile cold, <=2.0 s mobile warm. Basemap is timed separately. Selection visible-state latency is <=100 ms list/marker and <=250 ms polygon at the prepared ceiling. |
+
+### Provider policy, orchestration, and egress proof
+
+| Test family | Required proof |
+|---|---|
+| `SEC-ORIGIN-V12` | Exact approved public HTTPS origin/path succeeds. Reject HTTP, userinfo, fragment, encoded host, IP literal, localhost, IPv4/IPv6 private/loopback/link-local/reserved forms, unpinned port, path traversal/join ambiguity, unapproved origin/path, deployment DNS result with any non-public address, redirect, DNS validation drift, user/model-selected destination, and arbitrary header/method/model/tool. Every rejection has zero upstream calls. |
+| `SEC-MCP-V12` | Each public operation maps to one exact remote tool name plus input/output schema hash. Discovery output, model-proposed tool, renamed tool, hash substitution, write-like tool, and malformed output reject before/at projection with no alternative dispatch. |
+| `IT-ORCHESTRATION-V12` | `/agent` with research performs at most one research and one model attempt inside one operation. The model receives only that operation's sanitized candidates. A forged browser candidate/official label/URL is an unknown field and causes zero network. `/research` remains standalone and its returned bytes are not accepted by `/agent`. |
+| `CT-STRUCTURED-AGENT-V12` | For analysis, site profile, visual, and guided modes, round-trip legal claims/citations/payloads. Unrelated citation, orphan citation, factual source statement without citation, wrong context hash, missing required payload, free-form answer for structured mode, HTML/code/expression visual, nonfinite value, untrusted source ID, and model-created deterministic value reject. |
+| `SEC-EGRESS-V12` | Seed unique canaries for every key, credential, model ID, full endpoint, origin, path, query, authorization value, and credential pattern. Echo each through every model/Tavily/MCP string/URL/field, upstream error, reasoning field, health label, adjacent JSON fields, and streamed chunk boundary. The whole result becomes `invalid_upstream_response`; scans find zero canaries in body/header/log/cache/DOM/storage/export/clipboard/screenshot/trace/build. Test output prints booleans only. |
+| `LIMIT-PROVIDER-V12` | Equality and one-byte/item over for 16 KiB research/MCP request, 256 KiB raw research/MCP/model response, 96 KiB model request, public response limits, 10/40 s timeouts, four in-flight permits, and one attempt per provider. A billed/failed POST is never retried; reasoning-only output is invalid, not retried. |
+| `HEALTH-V12` | Exercise every unique provider-class/state/reason/capability legal combination and exact overall truth table. Duplicate class, illegal capability, absent model, schema/test field drift, endpoint/model detail, and secret echo reject. Probe cache <=60 seconds and ordinary calls revalidate failure independently. |
+| `ORIGIN-JSON-V12` | Private Sites edge access is a deployment precondition. Browser POST requires exact Origin and same-origin fetch metadata; cross-origin/same-site/absent mismatches reject. A headerless client succeeds only with the server-only local smoke token. Duplicate-aware parsing rejects repeated keys before JSON decoding. CORS/preflight and security headers match CTR-032. |
+
+### End-to-end acceptance journeys
+
+1. `E2E-MAP-V12`: cold private demo load shows verified 17-region overlay and visible typed markers; polygon interior, marker, list, shared edge, Chatham/99, and outside coordinate paths converge on the expected RegionId/outcome; deterministic calculations remain responsive with basemap and providers disabled.
+2. `E2E-AGENT-V12`: no credential/endpoint/model UI exists; sanitized health is visible; one prompt produces structured claims and optional server-orchestrated Tavily citations; analysis failure does not change deterministic bytes.
+3. `E2E-VISUAL-V12`: visual mode returns a schema-bound candidate, the trusted resolver validates lineage/numbers, and the UI renders a chart/table with an accessible equivalent. Malicious visual output falls back to the deterministic table.
+4. `E2E-MIGRATION-V12`: seed V2 connector secrets, route, research cache, and geography records; migrate; prove secrets/routes are gone, valid current region IDs match map/domain, old research is stale/nonrefreshable or quarantined, and scenarios/results survive only when mapping is provable.
+5. `E2E-DEPLOY-V12`: fresh checkout/build contains no TEST values; Sites runtime secrets are secret entries; access is owner-only/private; exact-origin DNS validation, map readiness, health, research, agent, visual, deterministic fallback, refresh, and offline active-assets smoke pass at the deployed origin.
+
+### Exact traceability additions
+
+| Review finding / approved concern | Release-blocking evidence |
+|---|---|
+| G3V11-001 | `CT-GRAPH-V12`, `CT-ROUTES-V12` |
+| G3V11-002/003/004 | `DATA-SPATIAL-V12`, `MODEL-SELECTION-V12`, `GEO-TIE-V12`, `MARKER-V12` |
+| G3V11-005 | `IT-ORCHESTRATION-V12`, `CT-STRUCTURED-AGENT-V12`, `E2E-AGENT/VISUAL-V12` |
+| G3V11-006 | `SEC-EGRESS-V12` |
+| G3V11-007, `g3v11-d01` | `SEC-ORIGIN-V12`, `SEC-MCP-V12`, deployment DNS proof |
+| G3V11-008 | `LIMIT-PROVIDER-V12`, `HEALTH-V12` |
+| G3V11-009 | `CT-REGISTRY-CACHE-V12`, `E2E-MIGRATION-V12` |
+| G3V11-010 | `OFFLINE-SPATIAL-V12`, `E2E-MAP/DEPLOY-V12` |
+| G3V11-011 | `ORIGIN-JSON-V12` |
+| G3V11-012 | `PERF-MAP-V12` and all explicit one-to-one rows above |
+| `g3v11-d02` | `IT-ORCHESTRATION-V12`; agent schema forbids candidate input |
+
+### Independent re-review entry checklist v0.12
+
+- Confirm both user decisions are resolved in the state ledger and no open decision remains.
+- Read the current raw v0.12 artifacts and independently re-run every G3V11 counterexample against CTR-029–036 and the v0.12 logic/tests.
+- Verify `GridLensPublicContractV3` is closed and exclusive, `GridLensServerContractV1` is unreachable from clients, and all historical conflicting roots are explicitly retired.
+- Verify one RegionId, generations, border derivation, unresolved points, marker variants, offline assets, structured claims/visuals, server-side research, egress canaries, exact public origins, attempt/byte budgets, health truth table, and migration closure.
+- Issue a fresh exact verdict of `validated`, `validated-with-nonmaterial-edits`, or `blocked`; no expected verdict.
+
+## Version 0.12.1 blocker-closure tests
+
+| Finding | Added release-blocking proof |
+|---|---|
+| G3V12-001 | `CT-FULL-GRAPH-V121` compiles every CTR-037 deterministic root and adapter from the effective V3 graph. Mutation-delete each adapter/root, inject an unlisted V2/connector root, and exercise each accepted legacy identity plus unknown quarantine. Result/evidence/case/brief/visual/route round trips retain one RegionId and all hashes. |
+| G3V12-002 | `CT-SELECTION-UNION-V121` mutation-tests every source/field cross-product; only its exact discriminant fields pass. Model tests prove store-only generation stamping/replay. Marker fixtures require canonical order, globally unique marker/project/candidate IDs, exact prefix equality, and point-in-region. |
+| G3V12-003 | `CT-CONTEXT-MODES-V121` tests minimum/maximum valid scenario bounds including 100,000 MW, PUE 5 and 4,380,000 GWh; every prompt stage and trusted context variant; full fingerprint mutation; immutable outcomes/origin/freshness/disclaimer retention; exclusive analysis/site-profile/guided/visual payload rules; confirmable criteria; conflict/unsupported claims; and trusted field/unit/snapshot visual resolution with unrelated-binding rejection. |
+| G3V12-004 | `CT-REGISTRY-ROUTE-CACHE-V121` validates the exact 17 complete registry rows, all conditional mode/state fields, immutable route variants, current provider/route pairs, response hash and expiry ordering, plus representable legacy-stale/quarantine migrations and back/forward restoration. |
+| G3V12-005 | `SEC-CLICKABLE-URL-V121` mutates scheme, userinfo, fragment, port, encoded hostname, localhost suffixes, IPv4/IPv6 literals and every private/loopback/link-local/reserved form through research, agent, cache, DOM, copy and export. Unsafe candidates are inert/discarded and never rendered/fetched. |
+| G3V12-006 | `DATA-SPATIAL-MANIFEST-V121` recomputes manifest remainder hash and both asset byte hashes/lengths/schema bindings; swaps separately valid geometry/marker assets, release labels, IDs, order, lengths, schemas and hashes; every mix rejects and the previous complete cached set remains active offline. |
+
+The independent reviewer must re-run all G3V11 and G3V12 counterexamples against CTR-037–042 and these tests. Zero open decisions remain.
+
+### Version 0.12.2 storage-root compile test
+
+`CT-STORED-ENVELOPE-V122` compiles and round-trips every CTR-043 live payload and tombstone, including scenario draft/normalization state, separate result bytes, complete comparison bytes, confirmed profile, opt-in prompt history, migration/operation receipts, quarantine and key-discriminated preferences. Offline restore reconstructs the scenario/result/comparison from stored bytes rather than an ID alone. It mutation-kills store/payload mismatch, wrong payload hash, zero/reused revision, timestamp inversion, live deletion fields, tombstone payload or missing store class, wrong preference value kind, arbitrary JSON, connector/configuration/credential/endpoint/model/server fields, legacy input without a successful named adapter receipt, and unknown geography. The test also proves `StoredEnvelopeV3` is reachable from `GridLensDeterministicContractV3` and `GridLensPublicContractV3` with no unresolved symbol.

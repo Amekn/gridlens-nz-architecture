@@ -1,9 +1,11 @@
 # GridLens NZ — Design 1 implementation plan
 
-**Artifact version:** 1.0  
+**Artifact version:** 1.1
 **Status:** implementation-ready  
-**Gate basis:** Requirements 0.4 approved; Usage Definition 0.4 approved; Architecture 0.3 Option A approved; Contracts/Logic/Test Strategy 0.10 independently validated in `08-logic-review.md`; `state.json` records Gate 3 `validated` with zero open decisions.  
+**Gate basis:** Requirements/Usage 0.5 approved; Architecture 0.4 Option A approved; Contracts/Logic/Test Strategy 0.12.3 independently validated in `08-logic-review.md`; `state.json` records Gate 3 `validated` with zero open decisions.
 **Delivery target:** OpenAI Sites capability path, isolated under `design-1-browser-first/`.
+
+**Normative implementation addendum:** v1.1 supersedes every v1.0 instruction for user-entered connectors, browser credential persistence, direct provider CORS, or marker-only geography selection. The time-critical build has three parallel slices with exclusive ownership: (A) pinned 17-region polygons/typed markers/canonical selection in `src/map`, `app/NzMap.tsx`, `public/data` and map tests; (B) fixed same-origin Worker provider modules in `src/server` and provider tests; (C) root integration in `GridLensApp`, Worker/Vite configuration, CSS, scripts and packaging. Each slice begins with a failing focused test, passes its local suite, then integrates under typecheck/lint/build/browser smoke. Local serve maps ignored `TEST.md` into server-only Worker bindings; hosted Sites uses secret environment entries. No TEST value may enter source, client bundles, output, logs, screenshots, or reports.
 
 ## 1. Outcome and delivery posture
 
@@ -189,4 +191,3 @@ GridLens NZ Design 1 is complete only when:
 - production and packaged artifacts contain no credential/test secret or hidden relay/auth/database capability;
 - independent QA passes from a clean environment; and
 - the exact Sites artifact is privately deployed and verified with rollback/removal guidance.
-
