@@ -19,6 +19,7 @@ import {
 } from "../src/map/markers";
 import {
   applySelectionIntent,
+  singleCandidateIdForRegion,
   type MapSelectionState,
 } from "../src/map/selection";
 import type {
@@ -155,6 +156,20 @@ describe("typed marker and selection model", () => {
         domainOutcome: "excluded",
       },
     ]));
+  });
+
+  it("auto-selects only a region's sole prepared candidate", () => {
+    const candidates = [
+      { id: "demo-otago-mosgiel", regionId: "14" as const },
+      { id: "demo-southland-invercargill", regionId: "15" as const },
+    ];
+
+    assert.equal(singleCandidateIdForRegion("14", candidates), "demo-otago-mosgiel");
+    assert.equal(singleCandidateIdForRegion("99", candidates), undefined);
+    assert.equal(singleCandidateIdForRegion("14", [
+      ...candidates,
+      { id: "demo-otago-second", regionId: "14" as const },
+    ]), undefined);
   });
 
   it("derives marker region and clears marker on list selection", () => {

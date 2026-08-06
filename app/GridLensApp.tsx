@@ -40,6 +40,7 @@ import {
   type RegionId,
 } from "@/src/client/providerApi";
 import { REGION_BY_ID, regionIdForName } from "@/src/map/regions";
+import { singleCandidateIdForRegion } from "@/src/map/selection";
 import { NzMap, type MapSite } from "./NzMap";
 
 const GROUP_LABELS: Record<SitePresentationGroup, string> = {
@@ -313,7 +314,9 @@ export function GridLensApp() {
 
   function selectRegion(regionId: RegionId, _source: string, selectedSite?: string) {
     setSelectedRegionId(regionId);
-    setSelectedSiteId(selectedSite ?? null);
+    setSelectedSiteId(
+      selectedSite ?? singleCandidateIdForRegion(regionId, mapSites) ?? null,
+    );
   }
 
   async function askAgent() {

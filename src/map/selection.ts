@@ -43,6 +43,19 @@ export type MapSelectionResult = {
   readonly source: SelectionSource;
 };
 
+export const singleCandidateIdForRegion = (
+  regionId: RegionId,
+  candidates: readonly {
+    readonly id: string;
+    readonly regionId?: RegionId;
+  }[],
+): string | undefined => {
+  const regionalCandidates = candidates.filter(
+    (candidate) => candidate.regionId === regionId,
+  );
+  return regionalCandidates.length === 1 ? regionalCandidates[0].id : undefined;
+};
+
 export const applySelectionIntent = (
   state: MapSelectionState,
   intent: MapSelectionIntent,
