@@ -13,9 +13,17 @@ export {
   presentationGroupFor,
 } from "./assessment";
 export { calculateScenario, normalizeScenario } from "./scenario";
+export { buildImpactPlots } from "./impact-plots";
+export type {
+  ImpactPlotModel,
+  ImpactPlotRow,
+  ImpactPlotRowState,
+  ImpactPlotStatus,
+} from "./impact-plots";
 export type {
   AssessmentReason,
   AssessmentReasonCode,
+  CoolingMethod,
   EvaluationResult,
   EvidenceCoverage,
   EvidenceFreshness,

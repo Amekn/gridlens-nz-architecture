@@ -117,9 +117,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .field-label { display: flex; flex-direction: column; gap: 7px; color: #344746; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; font-weight: 750; }
 .field-label > span { display: flex; justify-content: space-between; align-items: center; }
 .field-label > span small, .field-label:not(.full) > span { color: #879592; font-size: 9px; font-weight: 600; }
-.field-label input, .search-box input, .ai-zone textarea { width: 100%; border: 1px solid rgba(10,31,34,.15); background: rgba(255,255,255,.63); border-radius: 9px; color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 550; transition: .2s ease; }
-.field-label input { height: 40px; padding: 0 11px; }
-.field-label input:focus, .search-box:focus-within, .ai-zone textarea:focus { border-color: var(--teal); background: #fff; }
+.field-label input, .field-label select, .search-box input, .ai-zone textarea { width: 100%; border: 1px solid rgba(10,31,34,.15); background: rgba(255,255,255,.63); border-radius: 9px; color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 550; transition: .2s ease; }
+.field-label input, .field-label select { height: 40px; padding: 0 11px; }
+.field-label select { appearance: none; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, #61736f 50%), linear-gradient(135deg, #61736f 50%, transparent 50%); background-position: calc(100% - 15px) 17px, calc(100% - 11px) 17px; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+.field-label input:focus, .field-label select:focus, .search-box:focus-within, .ai-zone textarea:focus { border-color: var(--teal); background-color: #fff; }
 .range-field { display: flex; flex-direction: column; gap: 8px; }
 .range-field > div { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #536663; }
 .range-field strong { font-size: 11px; color: var(--ink); }
@@ -188,6 +189,39 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .category-row em.moderate { color: #8d631b; background: rgba(239,173,56,.11); }
 .category-row em.high { color: #97453f; background: rgba(236,103,94,.1); }
 .category-row em.insufficient { color: #64716e; background: rgba(83,101,98,.09); }
+.impact-dashboard { padding-top: 22px; background: #f0ede5; }
+.impact-dashboard-intro { margin: -5px 0 14px !important; max-width: 52ch; }
+.impact-plot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.impact-plot-card { min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(10,31,34,.12); border-top: 3px solid #778580; border-radius: 12px; background: rgba(255,255,255,.62); box-shadow: 0 7px 18px rgba(14,37,35,.05); }
+.impact-plot-card.screened { border-top-color: var(--teal); }
+.impact-plot-card.indicative { border-top-color: var(--amber); }
+.impact-plot-card.concern { border-top-color: var(--red); }
+.impact-plot-card > header { min-height: 88px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 8px; padding: 11px 11px 9px; border-bottom: 1px solid rgba(10,31,34,.08); }
+.impact-plot-icon { width: 30px; height: 30px; display: grid; place-items: center; grid-row: 1 / span 2; border-radius: 8px; color: #526762; background: rgba(83,101,98,.09); }
+.impact-plot-card.screened .impact-plot-icon { color: #12785b; background: rgba(24,168,126,.1); }
+.impact-plot-card.indicative .impact-plot-icon { color: #8d631b; background: rgba(239,173,56,.13); }
+.impact-plot-card.concern .impact-plot-icon { color: #93423c; background: rgba(236,103,94,.12); }
+.impact-plot-card header > div:nth-child(2) { min-width: 0; }
+.impact-plot-card h3 { margin: 0; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: 15px; font-weight: 600; }
+.impact-plot-card header p { margin: 4px 0 0; color: #687976; font-size: 8px; line-height: 1.35; }
+.impact-plot-card header em { grid-column: 2; justify-self: start; border-radius: 999px; padding: 4px 6px; color: #5d6d6a; background: rgba(83,101,98,.08); font-size: 7px; font-style: normal; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+.impact-plot-card.screened header em { color: #15775b; background: rgba(24,168,126,.1); }
+.impact-plot-card.indicative header em { color: #865e18; background: rgba(239,173,56,.12); }
+.impact-plot-card.concern header em { color: #923e39; background: rgba(236,103,94,.11); }
+.impact-plot-bars { display: grid; gap: 9px; padding: 11px; }
+.impact-plot-row { min-width: 0; }
+.impact-plot-row > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.impact-plot-row span { overflow: hidden; color: #536663; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.impact-plot-row strong { flex: 0 0 auto; color: #203b38; font-size: 8px; }
+.impact-plot-row > i { display: block; height: 7px; overflow: hidden; border-radius: 999px; background: rgba(13,44,42,.08); }
+.impact-plot-row > i > b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #168f6d, #46d7aa); }
+.impact-plot-row.prepared > i > b { background: linear-gradient(90deg, #347e93, #62bfd0); }
+.impact-plot-row.declared > i > b { background: linear-gradient(90deg, #b27b1f, #f1b747); }
+.impact-plot-row.missing > div strong { color: #8c5b28; }
+.impact-plot-row.missing > i { border: 1px dashed rgba(125,91,45,.28); background: repeating-linear-gradient(135deg, rgba(166,120,48,.035) 0 5px, transparent 5px 10px); }
+.impact-plot-card > footer { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding: 9px 11px 11px; border-top: 1px solid rgba(10,31,34,.07); }
+.impact-plot-card footer span { color: #687976; font-size: 7.5px; line-height: 1.35; }
+.impact-plot-card footer small { color: #889590; font-size: 6.5px; text-transform: uppercase; letter-spacing: .05em; }
 .ai-zone { background: linear-gradient(145deg, rgba(11,40,40,.98), rgba(6,25,26,.98)); color: #e9f3ef; }
 .ai-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .ai-mark { width: 36px; height: 36px; display: grid; place-items: center; color: var(--teal-bright); background: rgba(53,213,160,.12); border: 1px solid rgba(53,213,160,.16); border-radius: 10px; }
@@ -311,6 +345,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .panel-section { padding-left: 18px; padding-right: 18px; }
   .metric-ribbon { padding-left: 18px; padding-right: 18px; }
   .field-grid, .connector-grid { grid-template-columns: 1fr; }
+  .impact-plot-grid { grid-template-columns: 1fr; }
   .connector-grid .full { grid-column: auto; }
   .metric-ribbon strong { font-size: 15px; }
   .map-insight-card p { display: none; }

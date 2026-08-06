@@ -28,6 +28,7 @@ test("server-renders the GridLens NZ demo shell", async () => {
 test("does not render checkbox or select geography controls", async () => {
   const html = await (await render()).text();
   assert.doesNotMatch(html, /type=["']checkbox["']/i);
-  assert.doesNotMatch(html, /<select\b/i);
+  assert.doesNotMatch(html, /<select\b[^>]*(?:region|geograph)/i);
+  assert.match(html, /<select\b[^>]*aria-label=["']Cooling method["']/i);
   assert.match(html, /Selectable map of New Zealand regions and candidate sites/);
 });

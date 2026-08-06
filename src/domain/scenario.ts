@@ -1,8 +1,17 @@
 import type {
+  CoolingMethod,
   NormalizedScenario,
   ScenarioCalculations,
   ScenarioInput,
 } from "./types";
+
+const COOLING_METHODS = new Set<CoolingMethod>([
+  "air",
+  "evaporative",
+  "direct_liquid",
+  "hybrid",
+  "unknown",
+]);
 
 const parseFiniteNumber = (value: number | string, field: string): number => {
   const normalized = typeof value === "string" ? value.trim() : value;
@@ -47,11 +56,24 @@ export const normalizeScenario = (input: ScenarioInput): NormalizedScenario => {
     input.concurrencyRatio,
     "concurrencyRatio",
   );
+  const targetNetworkGbps = parseFiniteNumber(input.targetNetworkGbps ?? 100, "targetNetworkGbps");
+  const permanentJobs = parseFiniteNumber(input.permanentJobs ?? 50, "permanentJobs");
+  const regionalInvestmentNzdM = parseFiniteNumber(
+    input.regionalInvestmentNzdM ?? 0,
+    "regionalInvestmentNzdM",
+  );
+  const coolingMethod = input.coolingMethod ?? "hybrid";
 
   assertRange(itCapacityMw, "itCapacityMw", 0, 100_000, false);
   assertRange(pue, "pue", 1, 5);
   assertRange(utilizationRatio, "utilizationRatio", 0, 1);
   assertRange(concurrencyRatio, "concurrencyRatio", 0, 1);
+  assertRange(targetNetworkGbps, "targetNetworkGbps", 1, 100_000);
+  assertRange(permanentJobs, "permanentJobs", 0, 100_000);
+  assertRange(regionalInvestmentNzdM, "regionalInvestmentNzdM", 0, 1_000_000);
+  if (!COOLING_METHODS.has(coolingMethod)) {
+    throw new RangeError("coolingMethod is not supported.");
+  }
 
   return Object.freeze({
     name: input.name?.trim() || "Untitled scenario",
@@ -59,6 +81,10 @@ export const normalizeScenario = (input: ScenarioInput): NormalizedScenario => {
     pue: round(pue),
     utilizationRatio: round(utilizationRatio),
     concurrencyRatio: round(concurrencyRatio),
+    coolingMethod,
+    targetNetworkGbps: round(targetNetworkGbps),
+    permanentJobs: round(permanentJobs),
+    regionalInvestmentNzdM: round(regionalInvestmentNzdM),
   });
 };
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildImpactPlots,
   DEMO_SITES,
   evaluateScenario,
   presentationGroupFor,
@@ -89,5 +90,28 @@ describe("deterministic GridLens domain core", () => {
       ),
       true,
     );
+  });
+
+  it("builds four honest infrastructure and benefit plots", () => {
+    const result = evaluateScenario(southlandFixture);
+    const assessment = result.assessments.find((item) => item.candidate.region === "Southland");
+    assert.ok(assessment);
+    const plots = buildImpactPlots(result.normalizedScenario, result.calculations, assessment);
+
+    assert.deepEqual(plots.map((plot) => plot.id), ["power", "water", "broadband", "economic"]);
+    assert.equal(plots[0].rows.some((row) => row.display === "65.0 MW"), true);
+    assert.equal(plots[1].status, "indicative");
+    assert.match(plots[1].note, /not a water-availability finding/i);
+    assert.equal(plots[2].rows.some((row) => row.state === "missing"), true);
+    assert.equal(plots[3].rows.find((row) => row.label === "Permanent jobs claim")?.display, "50");
+  });
+
+  it("withholds water numbers when cooling is unknown", () => {
+    const result = evaluateScenario({ ...southlandFixture, coolingMethod: "unknown" });
+    const water = buildImpactPlots(result.normalizedScenario, result.calculations)[1];
+
+    assert.equal(water.id, "water");
+    assert.equal(water.status, "missing");
+    assert.equal(water.rows.every((row) => row.value === undefined && row.state === "missing"), true);
   });
 });

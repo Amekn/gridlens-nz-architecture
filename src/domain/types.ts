@@ -37,12 +37,23 @@ export interface SiteCandidate {
   };
 }
 
+export type CoolingMethod =
+  | "air"
+  | "evaporative"
+  | "direct_liquid"
+  | "hybrid"
+  | "unknown";
+
 export interface ScenarioInput {
   readonly name?: string;
   readonly itCapacityMw: number | string;
   readonly pue: number | string;
   readonly utilizationRatio: number | string;
   readonly concurrencyRatio: number | string;
+  readonly coolingMethod?: CoolingMethod;
+  readonly targetNetworkGbps?: number | string;
+  readonly permanentJobs?: number | string;
+  readonly regionalInvestmentNzdM?: number | string;
 }
 
 export interface NormalizedScenario {
@@ -51,6 +62,10 @@ export interface NormalizedScenario {
   readonly pue: number;
   readonly utilizationRatio: number;
   readonly concurrencyRatio: number;
+  readonly coolingMethod: CoolingMethod;
+  readonly targetNetworkGbps: number;
+  readonly permanentJobs: number;
+  readonly regionalInvestmentNzdM: number;
 }
 
 export interface ScenarioCalculations {

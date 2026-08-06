@@ -23,7 +23,9 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  buildImpactPlots,
   evaluateScenario,
+  type ImpactPlotModel,
   type ScenarioInput,
   type SiteAssessment,
   type SiteDomainOutcome,
@@ -158,6 +160,45 @@ function AgentPayloadView({ payload }: { payload: AgentPayload }) {
   </figure>;
 }
 
+const IMPACT_PLOT_ICONS: Record<ImpactPlotModel["id"], typeof Zap> = {
+  power: Zap,
+  water: Droplets,
+  broadband: Network,
+  economic: CircleGauge,
+};
+
+function ImpactPlotDashboard({ plots }: { plots: readonly ImpactPlotModel[] }) {
+  return <section className="panel-section impact-dashboard" aria-labelledby="impact-plots-title">
+    <div className="section-heading">
+      <div><span className="eyebrow">Deterministic evaluation plots</span><h2 id="impact-plots-title">Infrastructure &amp; benefit evidence</h2></div>
+      <span>4</span>
+    </div>
+    <p className="impact-dashboard-intro">Calculated values and declared assumptions are plotted separately from missing evidence. No AI scoring is used.</p>
+    <div className="impact-plot-grid">
+      {plots.map((plot) => {
+        const Icon = IMPACT_PLOT_ICONS[plot.id];
+        return <article className={`impact-plot-card ${plot.status}`} key={plot.id}>
+          <header>
+            <div className="impact-plot-icon"><Icon size={17} /></div>
+            <div><h3>{plot.title}</h3><p>{plot.summary}</p></div>
+            <em>{plot.statusLabel}</em>
+          </header>
+          <div className="impact-plot-bars" role="img" aria-label={`${plot.title}: ${plot.rows.map((row) => `${row.label}, ${row.display}`).join("; ")}`}>
+            {plot.rows.map((row) => {
+              const width = row.value === undefined ? 0 : Math.max(3, Math.min(100, row.value / row.maximum * 100));
+              return <div className={`impact-plot-row ${row.state}`} key={row.label}>
+                <div><span>{row.label}</span><strong>{row.display}</strong></div>
+                <i><b style={{ width: `${width}%` }} /></i>
+              </div>;
+            })}
+          </div>
+          <footer><span>{plot.note}</span><small>{plot.provenance}</small></footer>
+        </article>;
+      })}
+    </div>
+  </section>;
+}
+
 export function GridLensApp() {
   const [scenario, setScenario] = useState<ScenarioInput>({
     name: "AI compute campus",
@@ -165,6 +206,10 @@ export function GridLensApp() {
     pue: 1,
     utilizationRatio: 0.8,
     concurrencyRatio: 0.3,
+    coolingMethod: "hybrid",
+    targetNetworkGbps: 100,
+    permanentJobs: 50,
+    regionalInvestmentNzdM: 0,
   });
   const evaluation = useMemo(() => evaluateScenario(scenario), [scenario]);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>("demo-southland-invercargill");
@@ -207,6 +252,7 @@ export function GridLensApp() {
     : undefined;
   const selectedRegionName = REGION_BY_ID[selectedRegionId].displayName;
   const categories = selectedAssessment ? categoryViews(selectedAssessment) : [];
+  const impactPlots = buildImpactPlots(evaluation.normalizedScenario, evaluation.calculations, selectedAssessment);
   const groupCounts = {
     passes_declared_constraints: evaluation.groups.passes_declared_constraints.length,
     needs_investigation: evaluation.groups.needs_investigation.length,
@@ -234,19 +280,28 @@ export function GridLensApp() {
       setScenario((current) => ({ ...current, name: String(value) }));
       return;
     }
+    if (field === "coolingMethod") {
+      setScenario((current) => ({ ...current, coolingMethod: String(value) as NonNullable<ScenarioInput["coolingMethod"]> }));
+      return;
+    }
     const parsed = typeof value === "number" ? value : Number(value.trim());
-    const bounds: Record<Exclude<keyof ScenarioInput, "name">, readonly [number, number]> = {
+    type NumericScenarioField = Exclude<keyof ScenarioInput, "name" | "coolingMethod">;
+    const numericField = field as NumericScenarioField;
+    const bounds: Record<NumericScenarioField, readonly [number, number]> = {
       itCapacityMw: [1, 1000],
       pue: [1, 3],
       utilizationRatio: [0.1, 1],
       concurrencyRatio: [0.05, 1],
+      targetNetworkGbps: [1, 100_000],
+      permanentJobs: [0, 100_000],
+      regionalInvestmentNzdM: [0, 1_000_000],
     };
-    const [minimum, maximum] = bounds[field];
+    const [minimum, maximum] = bounds[numericField];
     if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
       setScenario((current) => ({ ...current }));
       return;
     }
-    setScenario((current) => ({ ...current, [field]: parsed }));
+    setScenario((current) => ({ ...current, [numericField]: parsed }));
   }
 
   function selectSite(siteId: string) {
@@ -383,6 +438,28 @@ export function GridLensApp() {
                     <input type="number" min="1" max="3" step="0.05" value={String(scenario.pue)} onChange={(event) => updateScenario("pue", event.target.value)} />
                   </label>
                 </div>
+                <div className="field-grid">
+                  <label className="field-label">Cooling method <span>prepared assumption</span>
+                    <select aria-label="Cooling method" value={scenario.coolingMethod ?? "hybrid"} onChange={(event) => updateScenario("coolingMethod", event.target.value)}>
+                      <option value="air">Air cooling</option>
+                      <option value="evaporative">Evaporative cooling</option>
+                      <option value="direct_liquid">Direct liquid cooling</option>
+                      <option value="hybrid">Hybrid cooling</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </label>
+                  <label className="field-label">Network target <span>Gbps</span>
+                    <input type="number" min="1" max="100000" step="10" value={String(scenario.targetNetworkGbps ?? 100)} onChange={(event) => updateScenario("targetNetworkGbps", event.target.value)} />
+                  </label>
+                </div>
+                <div className="field-grid">
+                  <label className="field-label">Permanent jobs claim <span>roles</span>
+                    <input type="number" min="0" max="100000" step="1" value={String(scenario.permanentJobs ?? 50)} onChange={(event) => updateScenario("permanentJobs", event.target.value)} />
+                  </label>
+                  <label className="field-label">Regional investment claim <span>NZD m</span>
+                    <input type="number" min="0" max="1000000" step="10" value={String(scenario.regionalInvestmentNzdM ?? 0)} onChange={(event) => updateScenario("regionalInvestmentNzdM", event.target.value)} />
+                  </label>
+                </div>
                 <label className="range-field" htmlFor="scenario-utilisation">
                   <div><span>Annual utilisation</span><strong>{Math.round(Number(scenario.utilizationRatio) * 100)}%</strong></div>
                   <input id="scenario-utilisation" aria-label="Annual utilisation ratio" type="range" min="0.1" max="1" step="0.05" value={Number(scenario.utilizationRatio)} onChange={(event) => updateScenario("utilizationRatio", Number(event.target.value))} />
@@ -471,6 +548,8 @@ export function GridLensApp() {
                   <div><span>Flexible load</span><strong>{evaluation.calculations.maximumFlexibleLoadMw.toFixed(1)} <small>MW</small></strong></div>
                 </section>
               </>}
+
+              <ImpactPlotDashboard plots={impactPlots} />
 
               <section className="panel-section ai-zone">
                 <div className="ai-heading"><div className="ai-mark"><Sparkles size={18} /></div><div><span className="eyebrow">Source-aware AI workspace</span><h2>Explore this result</h2></div></div>
