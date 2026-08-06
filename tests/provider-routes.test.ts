@@ -141,6 +141,7 @@ describe("closed provider routes", () => {
       upstream.calls.map((call) => call.url),
       ["https://api.tavily.com/search", "https://model.gridlens.nz/v1/chat/completions"],
     );
+    assert.equal(upstream.calls.every((call) => call.init?.redirect === "manual"), true);
     const modelBody = String(upstream.calls[1].init?.body);
     assert.equal(modelBody.includes("Public candidate excerpt."), true);
     const body = await response.json() as { partial: boolean; claims: unknown[]; citations: unknown[] };

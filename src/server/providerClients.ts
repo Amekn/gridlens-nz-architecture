@@ -152,8 +152,13 @@ async function fetchOnce(
   const cancel = () => controller.abort();
   signal.addEventListener("abort", cancel, { once: true });
   try {
-    return await fetcher(url, { ...init, signal: controller.signal, redirect: "error" });
+    const response = await fetcher(url, { ...init, signal: controller.signal, redirect: "manual" });
+    if (response.status >= 300 && response.status < 400) {
+      throw new ProviderFailure("upstream_rejected", false);
+    }
+    return response;
   } catch (error) {
+    if (error instanceof ProviderFailure) throw error;
     if (signal.aborted) throw new ProviderFailure("cancelled", false);
     if (timedOut) throw new ProviderFailure("upstream_timeout", true);
     console.warn("GridLens provider transport failed", {
