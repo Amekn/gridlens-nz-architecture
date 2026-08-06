@@ -1,6 +1,6 @@
 # ADR-002 — Deterministic domain and constrained AI boundary
 
-**Status:** Accepted at Gate 2 v0.2  
+**Status:** Superseded by requirements v0.4; historical pending Gate 2 v0.3
 **Date:** 2026-08-06
 
 ## Context

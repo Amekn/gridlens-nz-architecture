@@ -1,315 +1,351 @@
-# GridLens NZ — Selected architecture: browser-first hybrid
+# GridLens NZ — Selected architecture
 
-**Artifact version:** 0.2  
-**Status:** Approved at Gate 2 v0.2 on 2026-08-06  
-**Selected option:** Option A from `03-architecture-options.md`  
-**Approved inputs:** Requirements 0.3 and Usage Definition 0.3
+**Artifact version:** 0.3 approved
+**Status:** Approved at Gate 2
+**Approved baseline:** Requirements 0.4 and Usage Definition 0.4
+**Decision source:** `03-architecture-options.md` version 0.3 draft
+**Approval evidence:** User message, “Approve Gate 2 architecture v0.3 (Option A)”
+**Target:** OpenAI Sites capability-path deployment
 
 ## Decision
 
-GridLens NZ Design 1 will be a browser-first OpenAI Sites application. The browser owns every authoritative and required behavior: trusted-origin derivation, scenario validation, deterministic calculations, minimax workload-shifting simulation, evidence freshness, conservative assessment rules, curated evidence selection, comparisons, technical/plain-language factual report composition, and explicit transactional device-local saves.
+Adopt the **worker-separated browser platform** for Design 1.
 
-Prepared regional data, pinned map geometry, profiles, factors, thresholds, policies, and evidence ship as immutable, schema-validated, independently versioned static bundles. A narrow Sites edge gateway may optionally choose ordering among allowlisted deterministic statement IDs and non-factual connective slots through an external AI provider. It cannot author or paraphrase factual text. This gateway is non-authoritative, stateless, schema-constrained, and never required to complete analysis or generate a usable brief.
+GridLens NZ will be a React/TypeScript Sites application whose required product logic and local data remain in the browser. A deterministic analysis/evidence Web Worker owns calculations, assessment, spatial rules, evidence-graph queries, site screening, and visual-spec resolution. A separate connector/agent Web Worker owns user-configured model/MCP/Tavily calls and transient secret use. The main thread owns the trusted interface, MapLibre map, accessible equivalents, and rendering.
 
-No database, app-owned authentication, proposal upload, community-feedback collection, conversational assistant, live-web retrieval, or cloud scenario persistence exists in this MVP.
+A release-time Node data compiler obtains, validates, transforms, aggregates, and packages official/public data and prepared project documents into immutable content-addressed assets. It is not a runtime backend. Design 1 deploys no application database, user authentication, credential relay, secret-bearing server function, or hidden data proxy.
 
-## System context and trust boundaries
+## Architectural outcomes
 
-```mermaid
-flowchart TB
-    USER["Anonymous user"]
+- Deterministic results render without waiting for any remote request.
+- AI/network failures cannot mutate or suppress authoritative results.
+- Whole-NZ data and deep case records are bounded, versioned, lazy-loadable, cacheable, and reproducible.
+- Keys survive refresh only on the current origin/device, remain outside ordinary UI state, and are never sent through GridLens infrastructure.
+- Remote facts remain cited candidate evidence or AI interpretation unless deterministic source/policy logic recognizes them.
+- Dynamic visuals use trusted components bound to known data IDs; model-authored executable content has no rendering path.
+- Core app, national map/catalog, three demonstration records, one deep case, and deterministic brief remain available after caching even when AI/live services are unavailable.
 
-    subgraph BROWSER["Browser trust boundary"]
-        UI["Accessible application UI"]
-        DOMAIN["Deterministic domain engine"]
-        GEO["Geometry and region resolver"]
-        EVIDENCE["Evidence freshness and selector"]
-        REPORT["Deterministic report composer"]
-        SAVE["Transactional IndexedDB scenario store"]
-    end
+## Deployment and execution topology
 
-    subgraph SITES["OpenAI Sites deployment"]
-        ASSETS["Versioned static bundles"]
-        EDGE["Optional explanation gateway"]
-        SECRET["Provider secret configuration"]
-    end
-
-    PROVIDER["Optional external AI provider"]
-
-    USER --> UI
-    UI --> DOMAIN
-    UI --> GEO
-    UI --> EVIDENCE
-    DOMAIN --> REPORT
-    EVIDENCE --> REPORT
-    UI <--> SAVE
-    ASSETS --> UI
-    REPORT -. "statement-ID presentation request" .-> EDGE
-    SECRET --> EDGE
-    EDGE -. "optional request" .-> PROVIDER
-    PROVIDER -. "untrusted response" .-> EDGE
-    EDGE -. "validated presentation plan" .-> REPORT
+```text
+Release/build environment
+┌───────────────────────────────────────────────────────────────────────┐
+│ Data compiler                                                         │
+│ source registry → fetch/checksum → schema/unit/spatial transforms     │
+│ → EMI rolling aggregate → document/page extraction → evidence graph  │
+│ → licence/coverage reports → immutable data-pack manifest             │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │ static, content-addressed assets
+                                ▼
+OpenAI Sites / CDN / Worker-compatible ESM deployment
+┌───────────────────────────────────────────────────────────────────────┐
+│ Product shell (main thread)                                           │
+│ routes · MapLibre · accessible list · case components · prompt UI     │
+│ trusted visual/report renderers · disclosures · update UI             │
+│           │ validated commands                     ▲ view models      │
+│           ▼                                        │                  │
+│ Application coordinator ───── immutable snapshots/generation IDs      │
+│       │                                     │                         │
+│       ▼                                     ▼                         │
+│ Analysis/evidence Worker             Connector/agent Worker           │
+│ validation · units · calculations    vault · capability tests         │
+│ minimax · assessment · geometry      Responses/Chat streaming         │
+│ evidence graph · site screening      remote MCP/Tavily · citations    │
+│ visual grammar validation            bounded tool loop                │
+│       │                                     │                         │
+│       ▼                                     │ direct HTTPS + CORS      │
+│ immutable data packs                       ├────► custom model         │
+│                                             ├────► Tavily/MCP          │
+│ IndexedDB stores ◄──────────────────────────└────► enabled live APIs   │
+│ CacheStorage + versioned service worker                                │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
-Solid paths are required product behavior. Dashed paths are optional enrichment; removing the entire optional path leaves all approved acceptance journeys intact.
+## Components and responsibilities
 
-## Component boundaries
-
-| ID | Component | Responsibility and owned state | Key requirements |
+| ID | Component | Owns | Must not own |
 |---|---|---|---|
-| CMP-WEB-01 | Application shell and workflow coordinator | Owns current route/stage, in-memory draft, immutable result snapshots, comparison selection, loading/error presentation. | FR-RES-001, FR-CMP-001, FR-ERR-001 |
-| CMP-UI-01 | Accessible map, forms, charts, tables, result panels, and brief views | Renders semantics and interactions; owns no calculation, origin, geometry, evidence, or assessment truth. | FR-LOC-001–002, FR-SCN-001–003, FR-RES-002–003, NFR-ACC-001 |
-| CMP-VAL-01 | Scenario validator and trusted-origin derivation | Validates units/ranges and creates normalized `ScenarioInput`; assigns origins only from current trusted preset/source-reference actions, never editable/persisted labels. | FR-SCN-002–003, NFR-SEC-001 |
-| CMP-CAL-01 | Deterministic calculation engine | Owns formulas, internal units, precision rules, per-result status, complete reproducibility manifests, and typed partial metric errors. | FR-CAL-001, FR-CAL-004–006, NFR-REL-001 |
-| CMP-FLX-01 | Deterministic minimax flexibility optimizer | Owns baseline/shifted series, movement ledger, active constraints, optimal peak target, energy conservation, and algorithm version. | FR-CAL-002–003, FR-CAL-007, NFR-REL-001 |
-| CMP-ASM-01 | Assessment and missing-information engine | Owns approved electricity/water/resilience/economic/community policy, conservative evidence gates, deterministic overall precedence, reasons, unresolved questions, and policy version. | FR-CRT-001, FR-ASM-001–008 |
-| CMP-GEO-01 | Geometry and supported-region resolver | Owns pinned New Zealand geometry, deterministic point-in-polygon/border rules, and parity among coordinates, pointer, keyboard, map, and list selection. | FR-LOC-001–002, FR-DAT-001–002 |
-| CMP-DATA-01 | Regional bundle loader and validator | Loads manifests, profiles, factors, thresholds, evidence, policies, and geometry; validates cross-version references; isolates invalid region bundles; pins every constituent version. | FR-LOC-002, FR-EVD-003–004, FR-DAT-001–002, FR-ERR-001 |
-| CMP-EVD-01 | Curated evidence freshness and selector | Classifies each expected category as current/stale/unknown/missing against the pinned bundle `as-of` date and returns typed provenance records. | FR-EVD-001–004 |
-| CMP-RPT-01 | Deterministic impact brief composer | Produces complete factual technical/plain-language briefs from allowlisted statement templates and optionally applies a validated presentation plan containing IDs/order/non-factual connectives only. | FR-RPT-001–003, NFR-EXP-001 |
-| CMP-SAVE-01 | Transactional local scenario repository | Uses IndexedDB per-record transactions, revisions, operation IDs, and tombstones for save/restore/delete; runs sequential migrations, reports drift, and quarantines invalid records independently. | FR-LOCALSAVE-001–002, NFR-PRI-001 |
-| CMP-AI-01 | Optional presentation-plan client | Creates minimal statement-ID requests, applies generation-bound timeout/cancellation, accepts only validated ID/order/connective plans, and exposes fallback status. | FR-RPT-003, FR-ERR-001, NFR-MNT-002, NFR-PRI-001 |
-| CMP-EDGE-01 | Optional presentation-plan gateway | Holds provider secret, validates request/response, rejects factual free text and unknown IDs, rate-limits, times out, and stores no scenario. | FR-RPT-003, NFR-SEC-001–002, NFR-MNT-002 |
-| CMP-OBS-01 | Privacy-preserving diagnostics | Produces component/version/category/timing/correlation events without raw scenario or generated prose. | NFR-OBS-001 |
+| CMP-SHELL-01 | Sites product shell | Routes, application metadata, CSP/security headers, service-worker registration, first-run and update experience. | User secrets, authoritative calculations, evidence promotion. |
+| CMP-UI-01 | Trusted interface | Map Explorer, Case File, scenario editor, compare tray, audience/lens controls, prompt/connection UI, accessible list/table/text equivalents. | Formula or policy reimplementation, raw HTML rendering, secret read-back. |
+| CMP-APP-01 | Application coordinator | Typed commands, navigation state, operation IDs, immutable generations, cancellation, result/case/compare selection. | Domain arithmetic, direct fetch, credential bytes. |
+| CMP-MAP-01 | Map adapter | MapLibre lifecycle, bounded GeoJSON/vector layers, source/version legend, hit testing, selection events. | Region truth, nearest-region guesses, suitability inference. |
+| CMP-ANL-01 | Analysis/evidence worker | All pure/authoritative operations and read-only indexes over prepared data. | Connector credentials, arbitrary network access, DOM. |
+| MOD-VAL-01 | Validation and units module | Normalization, unit conversions, trusted origin proofs, error taxonomy. | UI-origin labels or model assertions as trust. |
+| MOD-CAL-01 | Calculation module | Facility MW, annual energy, flexible bound, water ranges, calculation traces. | Evidence inference or model calls. |
+| MOD-FLX-01 | Flexibility module | Deterministic same-day minimax simulation, constraints, movement ledger, invariant checks. | Greedy fallback presented as optimum. |
+| MOD-ASM-01 | Assessment module | Five category outcomes, evidence gates, reason IDs, overall precedence. | Overall numeric score, consent/recommendation language. |
+| MOD-GEO-01 | Spatial module | Stats point-in-polygon, border tie rule, EPSG transformations used at build/runtime where approved, contextual layer joins. | Nearest substitution, parcel/capacity claims. |
+| MOD-EVD-01 | Evidence graph module | Records/edges/indexes, freshness, coverage, conflict/supersession, case/timeline/community queries. | Silent source overwrite or AI promotion. |
+| MOD-SITE-01 | Site-screening module | Confirmed profile validation, deterministic exclusion/classification/order, sensitivity and reasons. | Hidden weights or objective best-site output. |
+| MOD-VIS-01 | Visual grammar module | Validate AI visual specs, resolve known data bindings, enforce row/mark/series bounds, produce trusted view models. | HTML, scripts, expressions, unapproved URLs or code. |
+| CMP-AGT-01 | Connector/agent worker | Connector capability matrix, outbound policy, model stream, bounded tool loop, MCP/Tavily/live adapters, citation/schema checks. | Mutation of domain results, evidence authority, UI commands. |
+| CMP-VLT-01 | Credential vault | Session/persistent modes, masked metadata, best-effort encryption, replace/clear, key-bearing URL redaction. | Raw-key export, logs, prompt history, scenario storage. |
+| CMP-DB-01 | Local repository | Separate IndexedDB stores, transactions, revisions, operation IDs, tombstones, migrations, quarantine, cache expiry. | Cloud sync, identity, silent conflict resolution. |
+| CMP-PACK-01 | Data-pack loader | Manifest/schema/checksum validation, dependency activation, lazy load, in-memory indexes, coverage status. | Partial activation of an incompatible pack set. |
+| CMP-OFF-01 | Offline/update manager | Shell/core-pack precache, cache-on-use packs, atomic release versions, update prompt and cache cleanup. | Credential/model response caching. |
+| CMP-RPT-01 | Deterministic brief composer | Technical/plain-language statements, facts/units/outcomes/sources/disclaimer, copied Markdown/text. | Free-form model facts in required sections. |
+| CMP-OBS-01 | Diagnostics | Allowlisted error class, component/version, correlation ID, status class, timing, local sanitized export. | Keys, sensitive URLs, prompts, documents, scenarios, response bodies. |
+| PIPE-DATA-01 | Release-time data compiler | Registered-source ingestion, licences, raw manifests, EMI processing, project/document extraction, graph/data packs, validation reports. | Runtime user data, server availability, undocumented scraping. |
 
-## Data ownership and consistency
+## Principal public contracts
 
-| Data | Authoritative owner | Persistence | Consistency/version rule |
+Phase 4 will freeze exact schemas. Architecture fixes these contract families and ownership:
+
+| Contract family | Producer | Consumers | Version/failure rule |
 |---|---|---|---|
-| Scenario draft | Application shell | Memory only | Editable and never treated as calculated output. |
-| Normalized scenario input | Validator | Result snapshot; optional IndexedDB save | Schema version and origin proof on every field. User edits are assumptions; preset/source origins require valid immutable references and are re-derived on restore. |
-| Calculation records | Calculation engine | Immutable in-memory result snapshot | Pin exact inputs, units, unrounded/display value, per-result status/error, and the complete constituent-version manifest. |
-| Hourly simulation | Minimax flexibility optimizer | Immutable in-memory result snapshot | Pin algorithm/profile/constraint versions; preserve daily energy and prove the reported peak target is feasible and minimal under approved constraints. |
-| Evidence status set | Evidence freshness/selector | Immutable in-memory result snapshot | One explicit current/stale/unknown/missing record per expected category, evaluated against pinned `as-of` and `validUntil`. |
-| Assessment | Assessment engine | Immutable in-memory result snapshot | Pin policy/threshold versions, exact deterministic inputs, ordered reasons, qualifying evidence IDs, and missing-information IDs. |
-| Regional bundle | Static asset set | Sites immutable deployment assets | Manifest independently pins schema, bundle, profile, factor, threshold, evidence, freshness-policy, assessment-policy, and geometry versions; invalid cross-version graphs are not activated. |
-| Pinned geometry | Static global bundle | Sites immutable deployment assets | Geometry version and deterministic region-ID mapping; exact border ties choose lexicographically smallest matching ID. |
-| Curated evidence | Static regional bundle | Sites immutable assets | Stable evidence ID, category, publication date, optional `validUntil`, full provenance, and quality; no arbitrary internet content. |
-| Saved scenario/tombstone | Local scenario repository | IndexedDB after explicit action | Per-record transaction, stable operation ID, revision, schema/source versions, and monotonic tombstone; sequential migration or individual quarantine on restore. |
-| Presentation plan | Report composer after gateway validation | Ephemeral memory only | Must match active result fingerprint/request generation and contain only supplied statement IDs, ordering, and allowlisted non-factual connective choices. |
-| Diagnostics | Diagnostics adapter/runtime log | Ephemeral or host log | No raw scenario inputs, evidence excerpts, saved labels, or generated prose. |
+| `AppCommand` / `AppEvent` | UI/coordinator | Coordinator, workers, UI | Discriminated JSON-compatible messages; unknown version/type rejected. |
+| `ScenarioInput` / `OriginProof` | Validation module | Calculation, assessment, report | UI/restored claims never self-assign trusted origin. |
+| `ResultSnapshot` / `ReproducibilityManifest` | Analysis worker | UI, compare, report, agent context | Immutable and fingerprinted; complete/insufficient/failed variants retain constituent versions. |
+| `EvidenceRecord` / `EvidenceEdge` / `EvidenceSnapshot` | Data compiler and evidence module | Case, assessment, agent context, report | Typed provenance/authority/freshness; conflicts retained; runtime candidates cannot auto-promote. |
+| `ProjectCase` / `ProjectEvent` / `CommunityRecord` | Data compiler/evidence module | Map sheet, Case File, report | Exact source/page references or explicit unavailable locator. |
+| `DataPackManifest` / `SourceRegistry` | Data compiler | Pack loader, service worker, release QA | Content hashes and compatible schema/version graph; atomic activation only. |
+| `ConnectorConfig` / `CapabilityMatrix` | Connector UI/worker | Agent coordinator | Sanitized origin/label only outside vault; unsupported capabilities disable dependent actions. |
+| `AgentRequest` / `AgentResult` | Coordinator/connector worker | Model/tool adapters, UI, research cache | Immutable generation, selected-context manifest, bounds, citations; late/malformed result rejected. |
+| `VisualSpec` / `ResolvedVisualModel` | Model then visual module | Trusted renderer | Model spec is untrusted; unknown binding/primitive/transformation fails closed. |
+| `StoredRecordEnvelope` / `StorageOperation` | Local repository | All local stores | Transactional revision/tombstone/idempotency/migration semantics. |
+| `DiagnosticEvent` | All components | Local diagnostics UI/export | Strict allowlist and size bounds; unknown/sensitive fields rejected. |
 
-The architecture intentionally does not cache authoritative calculated results in IndexedDB. A restored scenario is migrated, revalidated, and recalculated with currently loaded versions, and the UI must disclose every source-version difference from the save-time manifest. An old tab cannot resurrect a tombstoned record or silently overwrite a newer revision.
+## Data ownership and lifecycle
 
-## High-level contracts
+### Prepared public data
 
-The full typed definitions and failure semantics will be frozen in `05-contracts.md`. Architecture reserves these boundaries:
+`PIPE-DATA-01` creates immutable packs rather than one monolithic national file:
 
-| Contract | Producer | Consumers | Versioning/failure rule |
-|---|---|---|---|
-| `DeploymentManifest` / `RegionBundle` / `GeometryBundle` | Build-time curated data | Bundle loader, geometry resolver, evidence selector, simulator, assessment | Explicit compatible schema/constituent versions; invalid cross-reference graph rejected globally or per region according to ownership. |
-| `ScenarioDraft` / `ScenarioInput` / `OriginProof` | UI / validator | Calculation, simulator, assessment, save repository | Invalid drafts never cross into calculation; origin proof is derived from trusted actions and revalidated, never accepted from labels. |
-| `CalculationBundle` / `ResultStatus` / `ReproducibilityManifest` | Calculation engine | Assessment, report, UI | Complete/insufficient/failed results are explicit; partial typed failures permitted; no fabricated fallback values; every consumer receives full versions. |
-| `SimulationBundle` / `MovementLedger` | Minimax flexibility optimizer | Assessment, report, charts | Conservation, flexible-load, destination headroom/utilisation, original-peak, deterministic tie-break, and optimal-target invariants mandatory. |
-| `EvidenceItem` / `EvidenceCategoryStatus` | Curated bundle / freshness selector | Assessment, report, UI | Stable provenance; exact pinned-date freshness; one explicit status per expected category; missing references invalidate only dependent statements. |
-| `AssessmentBundle` / `AssessmentTrace` | Assessment engine | Report and results UI | Each non-insufficient outcome names deterministic inputs, policy/threshold versions, reasons, and qualifying current evidence; overall precedence is fixed. |
-| `ResultSnapshot` | Workflow coordinator | Comparison, report, optional presentation gateway | Immutable and fingerprinted from normalized inputs, per-result statuses, evidence statuses, and complete pinned versions. |
-| `SavedScenarioEnvelope` / `SaveOperation` / `ScenarioTombstone` | Local repository | Workflow coordinator | Transactional compare-and-swap by revision; idempotent operation ID; sequential migrations; individual quarantine; tombstones prevent resurrection. |
-| `PresentationPlanRequest` / `PresentationPlan` | Report client / edge gateway | Edge gateway / report composer | Strict JSON schema, allowlisted statement/order/connective choices, timeout/cancellation, no factual free text/HTML, result-fingerprint and request-generation match. |
-| `DiagnosticEvent` | Any component through diagnostics adapter | Browser/host diagnostic sink | Structured allowlist; privacy fields forbidden. |
+- deployment/source registry and compatibility manifest;
+- simplified Stats NZ region geometry and accessible region index;
+- searchable place/project catalog and layer metadata;
+- regional/context packs for electricity, environment, hazards, population, and other enabled sources;
+- compact rolling-12-month EMI node/region series and its coverage/exclusion ledger;
+- project case packs containing entities, claims, documents, page references, timeline events, community records, comparables, edges, and evidence counts;
+- factors, thresholds, profiles, assessment/freshness policies, and deterministic statement templates.
 
-## Required control and data flows
+Every pack records schema and semantic version, content hash, source URLs/resource IDs, ETag/last-modified when available, publisher, licence/attribution, retrieval/observation interval, transformations, coverage, exclusions, dependencies, and compatible application versions. The deployment contains compact derived assets and manifests, not the latest year of raw multi-gigabyte EMI files.
 
-### 1. Startup and region activation
+### Runtime and user data
 
-1. Load the application shell, deployment manifest, pinned geometry, and supported-region index.
-2. Validate schemas, exact required Southland/Waikato/Auckland records, geometry integrity, region IDs, and constituent-version compatibility before enabling map/coordinate selection.
-3. Resolve pointer/coordinate inputs with deterministic point-in-polygon; border ties choose the lexicographically smallest matching region ID; list and keyboard controls select the same canonical ID.
-4. On selection, load only the selected region bundle.
-5. Validate all cross-references, units, profile lengths, factor/threshold ranges, evidence categories/dates, pinned `as-of` date, and compatible versions.
-6. Activate a complete bundle atomically; on failure, mark only that region unavailable and retain other valid regions. Never substitute a nearest supported region.
+Mutable user records live only in IndexedDB and are separated by store. Credential secrets are never embedded in connector configuration. Prompt history is off by default and independently clearable. Research cache retains cited typed outputs and original retrieval times; it never changes an immutable result snapshot. Local cache/storage failure leaves the current in-memory scenario and deterministic result visible.
 
-### 2. Analyse scenario
+### Evidence authority
 
-1. UI submits a draft to the validator.
-2. Validator returns blocking errors, warnings, or normalized input with re-derived `OriginProof` records; untrusted/persisted origin labels are discarded.
-3. Calculation engine returns typed complete/insufficient/failed calculation records plus constituent versions.
-4. Minimax optimizer returns baseline/shifted profiles, movement ledger, active constraints, and the feasible minimal combined-peak target using deterministic tie-breaks.
-5. Evidence selector returns relevant curated evidence and one current/stale/unknown/missing record for every expected category against the pinned `as-of` date.
-6. Assessment engine applies the approved five-category rules and overall precedence, returning outcomes, exact traces, qualifying evidence, and missing information.
-7. Coordinator freezes the combined data and complete reproducibility manifest as a fingerprinted immutable result snapshot.
-8. UI and deterministic report composer render immediately; optional presentation-plan enrichment starts afterward and cannot add or paraphrase facts, change values/outcomes, or outlive the active request generation.
+Prepared records receive type/authority only from the registered data compiler and deterministic policies. Runtime adapters preserve publisher/source metadata, but web/model results enter as discovery candidates, web discourse, source extracts, or AI interpretations. They may be shown and cited; they cannot satisfy low-concern gates unless a future approved policy explicitly and deterministically admits that source/field/version.
 
-### 3. Compare scenarios
+## Core control flows
 
-Each side owns an immutable result snapshot. Comparison is a pure operation over compatible records; it never mutates the baseline. Invalid edits display a stale-result state until a new valid snapshot succeeds.
+### 1. Start, validate, and recover offline
 
-### 4. Save and restore
+1. Shell loads the release manifest and core national/catalog/demo pack set.
+2. Pack loader validates schema, hashes, dependencies, IDs, geometry compatibility, and source metadata before activation.
+3. Service worker serves only one complete shell/pack generation. A newer generation downloads separately and prompts reload.
+4. If the network is unavailable, the last validated cached generation opens. Missing cache packs are marked unavailable without affecting cached functions.
+5. Corrupt/incompatible core assets fail closed with a recovery/refresh path; no nearest geometry or unvalidated stale mix is used.
 
-Save is explicit and device-local. The repository uses one IndexedDB transaction per record mutation, compare-and-swap revisions, stable idempotent operation IDs, and monotonic tombstones. Independent records saved from concurrent tabs both survive; conflicting same-record revisions are surfaced rather than silently overwritten. Restore runs supported sequential migrations, validates the envelope and trusted references, loads the current bundle, recalculates, and reports every version drift. Invalid records are quarantined individually. After an indeterminate crash, retrying the same operation ID reconciles the committed outcome. Storage denial/quota errors leave the active in-memory scenario untouched.
+### 2. Explore map and open a case
 
-### 5. Optional explanation
+1. UI sends search/filter/viewport intent to the coordinator.
+2. Evidence worker returns bounded project/place/layer view models and coverage metadata.
+3. Map adapter renders only validated geometries/features; accessible list renders the same IDs and states.
+4. Selection opens the project sheet. Case navigation lazy-loads and atomically validates the project pack.
+5. Case File uses trusted components over graph queries for overview, timeline, discrepancies, People/Planet, community, company/comparables, evidence, and missing questions.
 
-The client sends only the active result fingerprint, current request-generation ID, allowlisted deterministic statement IDs with non-authoritative presentation metadata, requested audience, and disclosure version. It sends no factual free-text replacement slot. The gateway validates input, calls the configured provider under strict limits, validates output as an ID/order/non-factual-connective presentation plan, and returns it. The browser reconstructs all factual prose from deterministic templates. Any factual free text, unknown/duplicate/missing required ID, invalid connective, error, timeout, cancellation, fingerprint mismatch, or obsolete generation discards the plan and preserves deterministic prose.
+### 3. Analyse a scenario
 
-## Deployment topology and lifecycle
+1. Validation normalizes input and assigns origin proofs from the active UI action/preset/evidence reference.
+2. Calculation and flexibility modules return exact values, traces, constraint ledger, and per-result status.
+3. Evidence module selects a pinned evidence snapshot and evaluates freshness/coverage/conflicts at the result `as-of`.
+4. Assessment module produces category outcomes/reasons and overall precedence.
+5. Worker freezes a fingerprinted `ResultSnapshot` and manifest. UI renders it immediately.
+6. Optional live/agent enrichment creates separate cited records and never edits the snapshot.
 
-- One isolated Sites project lives entirely below `design-1-browser-first/`.
-- The Sites build produces Cloudflare Worker-compatible ESM output, static application assets, deployment/geometry/region manifests with immutable content hashes, and the optional edge route.
-- No D1/R2/database/authentication resource is declared for this MVP.
-- Runtime provider configuration is managed by Sites and never committed or embedded in browser bundles.
-- Deployment is atomic. A dataset or code update is a new versioned deployment; rollback restores the previous complete code/data set.
-- Saved local scenarios are forward-read through explicit sequential IndexedDB schema/data migrations only. Each migration is transactional and idempotent; records without a supported path or with invalid post-migration content are quarantined individually and deletable.
-- Unpublishing/removing the deployment does not delete browser-local saves; the product documents an explicit local delete control and browser-storage clearing path.
+### 4. Ask the agent or conduct research
 
-## Security and privacy model
+1. User chooses current context and sees destination/privacy disclosure.
+2. Coordinator creates a bounded immutable context projection; no unrelated saves or secret values are included.
+3. Connector worker resolves the connector by ID inside the vault and selects its tested dialect/tool route.
+4. It calls the configured endpoint directly. Remote MCP may be delegated to a capable model endpoint; otherwise an approved direct CORS MCP/REST adapter can participate in a bounded application tool loop.
+5. Every tool result is inert, typed, cited, size-limited, and prompt-injection-marked as external data.
+6. Schema/citation validation yields `AgentResult`, partial result, or structured failure. Obsolete generations are discarded.
+7. User-visible output remains labelled AI-generated with endpoint/model/connector/time and source links.
 
-1. Validate every trust-boundary payload, including bundled JSON, geometry, IndexedDB records, and optional gateway messages.
-2. Use no runtime HTML injection path for evidence or generated text.
-3. Treat evidence excerpts and AI output as content, never instructions; never place evidence text in a prompt-as-instruction role.
-4. Restrict the optional gateway to fixed presentation-plan operations; no user-authored prompt, factual replacement text, or open-ended chat endpoint.
-5. Keep provider secrets server-side; use request size, timeout, rate, and output-size limits.
-6. Disclose optional external AI processing and transmit no identity, local-save label, or unnecessary scenario field.
-7. Apply a restrictive content security policy and dependency review during implementation/QA.
-8. Keep diagnostics free of raw user content and sensitive configuration.
-9. Derive trust origins from active application actions and immutable bundle references; treat editable fields, URLs, local records, and browser-controlled state as untrusted regardless of claimed origin.
-10. Use deployment content hashes and same-origin fetches for integrity correlation; schema/content validation remains mandatory because browser-delivered data is not a privileged authority boundary.
-11. Treat result fingerprints as reproducibility/correlation identifiers, not signatures. A copied brief describes evidence validated by this deployment version but does not claim tamper-proof third-party attestation.
+### 5. Generate a visual safely
 
-## Failure containment and recovery
+1. Model receives only known data/evidence descriptors and the approved visual JSON schema.
+2. `MOD-VIS-01` rejects executable/unknown content, resolves IDs to trusted bounded data, applies only allowlisted transformations, and produces a renderer-specific view model.
+3. Main-thread trusted components render chart/map/table/panel plus deterministic accessible summary and source table.
+4. Invalid output falls back to the trusted raw data table; no partial executable content renders.
 
-| Failure | Containment | User-visible recovery |
+### 6. Screen and compare sites
+
+1. Agent parses the user prompt into a proposed structured profile.
+2. UI requires confirmation/correction of every hard constraint, preference, and priority.
+3. Site module applies deterministic classifications and exclusions to prepared/context evidence, with reason/evidence IDs.
+4. Any ordering uses only the visible confirmed priority rule; ties and missing data remain visible.
+5. Comparison is pure over immutable snapshots/classification records. Agent explanation is optional and non-authoritative.
+
+### 7. Save, restore, clear, and migrate
+
+1. Repository writes one record mutation transaction with stable operation ID and expected revision.
+2. Same-operation retry returns the committed outcome. Same-record stale revision becomes a visible conflict. Tombstones prevent resurrection.
+3. Restore validates envelope and trusted references, runs sequential idempotent migrations, quarantines invalid records individually, and reports source/version drift.
+4. Credential, scenario, comparison, cache, prompt history, and all-data clear actions remain separate and report exact scope.
+
+## Connector and credential security model
+
+- The ignored local `TEST.md` fixture may supply developer-only Llama-compatible endpoint and Tavily credentials to opt-in local verification tooling. It is never imported by application/production code, copied to `.env`, included in deployment assets, logged, or used as a runtime fallback. Tests consume it only when explicitly enabled and redact seeded values from all evidence. Release QA scans source and built artifacts for the filename and exact seeded secret values without printing them.
+- Only explicit HTTPS origins entered/approved by the user and passing a capability/CORS test enter the connector registry.
+- The static policy denies inline/eval scripts, third-party script origins, objects, framing, and unsafe base/form behavior. Supporting arbitrary custom HTTPS APIs requires a wider `connect-src` than a fixed provider product; exact destinations are therefore also enforced by the connector worker and shown in the UI.
+- Credentials remain in worker-local variables for use and a dedicated IndexedDB vault for persistence. They never enter route state, URLs where headers are supported, domain messages, visual specs, diagnostic events, clipboard, exports, or application logs.
+- Persistent vault records use authenticated encryption with an origin-local non-extractable key when the browser can persist it reliably. If unavailable, the UI either uses clearly disclosed origin-local storage or offers session-only mode according to the Phase 4 compatibility table. It never claims OS-keychain protection.
+- A compromised same-origin script can potentially act with the origin’s authority despite at-rest encryption. The primary mitigations are no third-party runtime scripts, strict validation, trusted renderers, no raw HTML, dependency pinning/scanning, CSP, connector data minimisation, and easy clear controls.
+- Key-bearing MCP URLs are stored and handled as complete secrets. Only a sanitized origin/label leaves the vault.
+- Provider errors and capability tests are sanitized before display. No fallback relay or alternate hidden provider is attempted.
+
+## Trusted visual and document model
+
+The Case File and generated visual areas share a trusted component registry. Approved primitives include metric, prose/citation block, evidence card, timeline, discrepancy, comparison table, bar/line/area/scatter chart, bounded map overlay, annotation, coverage panel, and missing-question list. Each takes validated typed props and data/evidence IDs.
+
+The AI schema contains no HTML, CSS, JavaScript, event handler, executable expression, arbitrary component name, arbitrary URL, or unbounded data payload. Model prose is displayed as labelled text with resolved citations; authoritative statements are reconstructed from trusted records. URL rendering accepts only source-registry/citation records and safe protocols.
+
+## Failure containment
+
+| Failure | Containment | Recovery |
 |---|---|---|
-| Manifest or selected region bundle invalid | Do not activate affected bundle; other regions remain usable. | Explain unavailable regional data and allow another region/retry. |
-| Geometry invalid or map/list region IDs disagree | Disable coordinate/map resolution; do not guess or select nearest; retain equivalent list diagnostics only when its canonical index is independently valid. | Explain mapping data failure and offer retry/another validated selection path. |
-| One metric cannot calculate | Typed failure only for that metric. | Show missing/invalid dependency and keep unrelated results. |
-| Simulation profile incompatible or optimizer invariant fails | Electricity totals remain available; simulation and electricity peak assessment are failed/incomplete, never replaced with a greedy estimate. | Explain profile/algorithm issue and omit no facts silently. |
-| Evidence missing/stale/unknown or threshold absent | Deterministic calculations remain complete; dependent assessment becomes insufficient according to policy. | Display explicit category status, age basis, missing thresholds, and questions. |
-| IndexedDB unavailable/quota/corrupt record | Keep memory state; abort failed transaction; quarantine only the corrupt record. | Continue session, show conflict/failure, and offer delete/manual recovery guidance. |
-| Concurrent save/delete conflict or indeterminate completion | Do not silently overwrite or resurrect; compare revision/tombstone and reconcile by operation ID. | Preserve committed state and ask the user to retry/refresh when a same-record conflict needs choice. |
-| Optional gateway/provider timeout, obsolete generation, or malformed/factual output | Discard presentation plan; deterministic report unchanged. | Mark enrichment unavailable and optionally retry without blocking. |
-| Deployment regression | Atomic rollback to prior deployment. | Operator verifies representative journey after rollback. |
+| Invalid release/core pack | Do not activate it or mix versions. | Use last validated cache; otherwise show scoped fatal recovery and refresh guidance. |
+| Invalid optional region/case/layer pack | Disable only that pack/category. | Explain version/source/coverage reason; allow other regions/cases. |
+| Analysis worker crash or invariant failure | Preserve last immutable UI snapshot; reject partial operation. | Restart worker, reload validated indexes, retry by operation ID; mark affected result failed if repeat fails. |
+| Map/WebGL failure | Domain location and evidence remain available. | Switch to accessible list/table and static region summary. |
+| One calculation/evidence category fails | Typed per-result/category failure only. | Keep unaffected outputs and deterministic brief with explicit missing/failure statement. |
+| IndexedDB unavailable/quota/corruption | Preserve in-memory work; abort transaction; quarantine one invalid record. | Session-only operation, delete/retry guidance, exact clear scope. |
+| Concurrent save/delete conflict | No silent overwrite/resurrection. | Reconcile operation ID or show versions for user choice/refresh. |
+| Credential unlock/storage failure | No key is exposed; connector unavailable. | Replace key, switch to session-only, or clear affected connector. |
+| Endpoint CORS/auth/capability failure | Disable only unsupported connector/features; no proxy. | Show tested origin/capabilities and corrective guidance. |
+| Model/MCP quota, timeout, malformed stream, injection, missing citation | Cancel/reject/return partial typed result; deterministic state untouched. | Retry within bound, change connector, or continue offline. |
+| Invalid visual spec | No renderer invocation for invalid fields/bindings. | Explain failure and show trusted data table/default visual. |
+| Service-worker update interruption | Active validated generation continues. | Retry download; activate only after complete manifest validation and user reload. |
 
-## Performance and resource model
+## Performance and resource budgets
 
-- Calculations, assessment, and comparison execute locally and target the approved sub-one-second result budget.
-- Load the app shell and manifest first; load a single regional bundle on demand.
-- Charts derive from bounded 24-hour arrays. The minimax optimizer uses a monotone feasibility search and deterministic allocation over fixed-size hourly vectors; exact complexity and numeric tolerances are frozen in the logic phase and tested against an independent oracle, including the 100/50/50 counterexample.
-- Evidence freshness/selection operates over the selected region's bounded curated collection and expected-category index, not an unbounded corpus or browser clock.
-- Optional AI work begins only after the deterministic snapshot renders and uses a strict timeout/cancellation path.
-- Build validation enforces explicit bundle/file-size, geometry-vertex, evidence-count, and migration-step budgets defined in the logic/test phase so new data cannot silently degrade the five-second initial-analysis target.
+Exact values become Gate 3 contracts, with these architecture envelopes:
+
+- deterministic recalculation target below 1 second on representative desktop hardware;
+- prepared first useful result below 5 seconds on the release test profile;
+- map interaction kept on the main thread while heavy filtering, graph, screening, pack validation, and data transformations run in the analysis worker;
+- simplified national geometry and bounded per-layer feature/vertex budgets; viewport filtering and clustering where appropriate;
+- immutable pack size/count budgets enforced by the data compiler, with core/demo precache and lazy regional/case packs;
+- agent/tool call, token, response byte, citation, visual row/series/mark, retry, and wall-time limits;
+- 24-hour flexibility vectors stay bounded; EMI raw intervals are aggregated at release time, not processed as a year-long browser workload;
+- IndexedDB quota estimates and graceful session fallback; no automatic unbounded prompt/research retention.
 
 ## Observability and operations
 
-- Diagnostic events use stable category/component/version/correlation fields and exclude scenario contents.
-- Browser performance marks cover bundle/geometry load, validation, calculation, minimax simulation, freshness classification, assessment, persistence operations, and first deterministic render.
-- Optional edge logs cover validation outcome, provider latency/status, factual-text/schema rejection, obsolete-generation discard, and fallback rate without request/response prose.
-- A build-time manifest report records every constituent version/hash, regional/evidence/threshold/geometry counts, validation status, source-link status, and asset sizes.
-- Release verification runs the Southland scenario, all three region-selection paths, frozen minimax oracle, freshness/assessment boundaries, partial failure, concurrent local-save/delete, migration/quarantine, and AI-disabled/malicious/late-response paths.
+- Browser performance marks: shell ready, core pack validated, map ready, case ready, calculation, minimax, assessment, evidence query, first deterministic render, connector first token, visual validation/render, persistence transaction.
+- Diagnostic events: allowlisted category, component/schema/app/data version, status class, correlation ID, bounded timing/counts. No default remote telemetry.
+- Release reports: source/link/licence review, content hashes, schema/cross-reference validation, data/geometry/layer sizes, EMI interval/DST/unit/spatial coverage, document/page extraction coverage, project/evidence counts, bundle budgets, dependency/licence/security scans.
+- Operations are immutable deploy, smoke verification, and rollback to a prior complete Sites deployment. Local browser data remains independently clearable after unpublish.
 
-## Testing strategy at architecture level
+## Build, deployment, upgrade, rollback, and removal
 
-- **Unit/property:** formulas, unit conversions, ranges, rounding, minimax optimality/conservation/all constraints, pinned-date freshness, all category/overall assessment branches, deterministic geometry border rules, and sequential migrations.
-- **Schema/contract:** deployment/geometry/regional bundles, cross-version references, water thresholds, evidence dates/categories, reproducibility manifests, saved envelopes/operations/tombstones, presentation-plan request/response, and diagnostic allowlist.
-- **Integration:** three-region activation/parity, partial calculation failure, report traceability, restore/recalculate/full version drift, concurrent-tab persistence, indeterminate-write reconciliation, migration/quarantine, and gateway fallback/stale-generation discard.
-- **End-to-end:** UJ-001 through UJ-011 where applicable, including Southland exact values, the 100/50/50 minimax oracle, category policy boundaries, and comparison.
-- **Accessibility:** automated checks plus keyboard, screen-reader semantics, zoom, non-colour outcome, chart table/text equivalence.
-- **Security/failure injection:** forged origin labels, inert malicious text, corrupt local records, malformed bundles/geometry, unknown or factual AI output, obsolete response, timeout, oversized payload, and missing secret.
-- **Packaging:** production Sites build, secret/local-path scan, clean deployment smoke, rollback/removal instructions.
+- Initialize with the Sites capability-path starter only after Gate 3. Preserve its package manager, vinext/Vite structure, `sites()` plugin, lockfile, and `.openai/hosting.json`.
+- Production output is Cloudflare Worker-compatible ESM plus static assets and no declared D1/R2/auth resource.
+- `.env.example` contains names only for non-user build/release inputs; no user connector key is bundled or hosted.
+- A release manifest binds app/schema/policy/geometry/data-pack versions. Deployment is atomic; old assets remain valid for rollback.
+- Service-worker upgrades do not silently replace an active result. UI announces a ready compatible version and reload creates a new app generation.
+- IndexedDB migrations are forward sequential, transactional, idempotent, and tested from every supported version. Unsupported records are quarantined, not guessed.
+- Removal unpublishes the Sites release; the app documentation explains that users must separately clear device-local data and credentials.
 
-## Project boundary and proposed source layout
+## Proposed source ownership layout
 
-The exact scaffold is deferred until the implementation gate. The architectural ownership map is:
+The exact scaffold remains prohibited until Gate 3, but implementation ownership will follow this layout:
 
 ```text
 design-1-browser-first/
-  .autoforge/                 approved design and verification record
-  app/                        Sites routes, shell, and optional edge route
-  src/domain/                 validation/origin, calculation, minimax simulation, evidence freshness, assessment, geometry
-  src/application/            workflow, snapshots, comparison, report composition
-  src/adapters/               bundle, transactional IndexedDB, optional presentation plan, diagnostics
-  src/ui/                     accessible product components and visualisations
-  public/data/                versioned deployment/geometry/region/evidence/policy bundles
-  schemas/                    machine-validated boundary schemas
-  tests/                      unit, property, contract, integration, end-to-end fixtures
+  .autoforge/                  approved artifacts and verification evidence
+  .openai/hosting.json         Sites resource/deployment declaration
+  app/                         vinext routes, shell, metadata and styles
+  src/application/             coordinator, state machines, snapshots, compare
+  src/domain/                  validation, calculations, flexibility, assessment
+  src/evidence/                evidence graph, freshness, coverage, conflicts
+  src/spatial/                 geometry and site-screening rules
+  src/agent/                   connector protocol, model/MCP/Tavily adapters
+  src/storage/                 IndexedDB, vault, cache, migrations
+  src/visuals/                 visual grammar and trusted renderers
+  src/workers/                 analysis and connector worker entrypoints/protocol
+  src/ui/                      Map Explorer, Case File and accessible components
+  data-pipeline/               registered build-time ingestion/transformation
+  public/data/                 compact immutable content-addressed packs
+  schemas/                     boundary/storage/data/agent/visual JSON schemas
+  tests/                       unit/property/contract/integration/e2e/fixtures
 ```
 
-No file outside this root is implementation-owned. `Shared/` is read-only and `Shared/GridLens NZ.md` is the sole normative source.
+`Shared/` and user-supplied source documents remain read-only inputs outside the implementation boundary.
 
-## Requirement-to-architecture traceability
+## Requirements-to-architecture traceability
 
-| Requirement IDs | Primary components/decisions |
+| Approved requirements | Primary architecture evidence |
 |---|---|
-| FR-LOC-001, FR-LOC-002 | CMP-UI-01, CMP-GEO-01, CMP-DATA-01, ADR-003 |
-| FR-SCN-001, FR-SCN-002, FR-SCN-003 | CMP-UI-01, CMP-VAL-01 and `OriginProof` trust boundary |
-| FR-CAL-001, FR-CAL-002, FR-CAL-003, FR-CAL-004, FR-CAL-005, FR-CAL-006, FR-CAL-007 | CMP-CAL-01, CMP-FLX-01, complete `ReproducibilityManifest`, ADR-002 |
-| FR-EVD-001, FR-EVD-002, FR-EVD-003, FR-EVD-004 | CMP-DATA-01, CMP-EVD-01, pinned bundle `as-of`, ADR-003 |
-| FR-CRT-001, FR-ASM-001, FR-ASM-002, FR-ASM-003, FR-ASM-004, FR-ASM-005, FR-ASM-006, FR-ASM-007, FR-ASM-008 | CMP-ASM-01, evidence/threshold gates, fixed overall precedence, ADR-002/ADR-003 |
-| FR-CMP-001 | CMP-WEB-01 and immutable `ResultSnapshot` |
-| FR-RES-001, FR-RES-002, FR-RES-003 | CMP-WEB-01, CMP-UI-01 |
-| FR-RPT-001, FR-RPT-002, FR-RPT-003 | CMP-RPT-01, CMP-AI-01, CMP-EDGE-01, statement-ID-only presentation plan, ADR-002 |
-| FR-ERR-001 | Typed partial results, region isolation, deterministic report fallback |
-| FR-DAT-001, FR-DAT-002 | CMP-GEO-01, CMP-DATA-01, deployment/geometry manifests, schema and cross-version validation, ADR-003 |
-| FR-LOCALSAVE-001, FR-LOCALSAVE-002 | CMP-SAVE-01, IndexedDB transaction/revision/operation/tombstone/migration model, ADR-004 |
-| NFR-PER-001, NFR-PER-002 | Local domain execution, lazy region loading, post-render optional AI |
-| NFR-REL-001, NFR-REL-002 | Complete reproducibility manifests, immutable snapshots, pure domain functions, typed per-result status/failures |
-| NFR-ACC-001 | CMP-UI-01 and accessibility test gate |
-| NFR-SEC-001, NFR-SEC-002 | Validation at every boundary, inert rendering, constrained edge gateway |
-| NFR-PRI-001 | Anonymous use, local-only saves, data-minimal optional gateway, ADR-004 |
-| NFR-EXP-001 | Calculation/evidence records and traceable report composer |
-| NFR-MNT-001, NFR-MNT-002 | Separated modules/contracts and statement-ID-only schema-constrained AI adapter |
-| NFR-DEP-001 | Sites deployment topology and Worker-compatible ESM build |
-| NFR-OBS-001 | CMP-OBS-01 and diagnostic allowlist |
-| CON-001 | All implementation ownership is under `design-1-browser-first/`. |
-| CON-002 | CMP-CAL-01, CMP-FLX-01, CMP-ASM-01, ADR-002; optional AI has no authority. |
-| CON-003 | CMP-DATA-01, CMP-EVD-01, ADR-003; no unrestricted live search. |
-| CON-004 | Anonymous Sites topology with no database/auth; ADR-001 and ADR-004. |
-| CON-005 | No upload/community submission boundary or storage exists. |
-| CON-006 | Sites deployment topology and Worker-compatible ESM build. |
-| CON-007 | Project boundary section and read-only normative-source rule. |
+| FR-LOC-001–004, FR-MAP-001–004 | CMP-UI-01, CMP-MAP-01, MOD-GEO-01, CMP-PACK-01, accessible shared-ID list/map model. |
+| FR-SCN-001–004 | CMP-UI-01, CMP-APP-01, MOD-VAL-01, CMP-DB-01. |
+| FR-CASE-001–004 | CMP-UI-01 trusted Case File, MOD-EVD-01, project packs, trusted component registry. |
+| FR-CAL-001–006 | MOD-CAL-01, MOD-FLX-01, immutable snapshot/manifest contracts. |
+| FR-ASM-001–008 | MOD-ASM-01, MOD-EVD-01 evidence gates, deterministic statement/report layer. |
+| FR-EVD-001–018 | PIPE-DATA-01, CMP-PACK-01, MOD-EVD-01, MOD-GEO-01, source/data/evidence contracts. |
+| FR-AGT-001–011 | CMP-APP-01, CMP-AGT-01, bounded context/tool protocol, MOD-SITE-01, labelled output. |
+| FR-VIZ-001–003 | MOD-VIS-01 and trusted visual registry; schema/data binding/provenance contracts. |
+| FR-CONN-001–008 | CMP-AGT-01, CMP-VLT-01, capability matrix, direct CORS policy, no-relay topology. |
+| FR-RES-001–004 | CMP-UI-01, CMP-APP-01, shared evidence/result IDs, trusted audience/lens presentation. |
+| FR-RPT-001–003 | CMP-RPT-01 and immutable trusted records; AI appendix separation. |
+| FR-SAVE-001–002 | CMP-DB-01 and CMP-VLT-01 transaction/revision/operation/tombstone/migration model. |
+| FR-DOC-001–002 | PIPE-DATA-01 prepared deep-case ingestion; user upload boundary remains absent/deferred. |
+| NFR-PER-001 | Worker split, pack budgets/lazy load, release-time EMI aggregation. |
+| NFR-REL-001–002 | Pure deterministic modules, immutable generations/snapshots, typed partial failure, offline packs. |
+| NFR-ACC-001 | CMP-UI-01 shared map/list and chart/table/text models, trusted component semantics. |
+| NFR-SEC-001–002 | Worker/message/schema boundaries, CSP, self-hosted dependencies, connector allowlist, trusted renderers, scans. |
+| NFR-PRI-001 | Anonymous/no-server topology, CMP-VLT-01, separate local stores and disclosure/clear flows. |
+| NFR-EXP-001 | Typed origin/evidence/AI records, evidence graph, deterministic trace/report. |
+| NFR-MNT-001–002 | Versioned component/contract families, separate workers/modules, immutable request generation. |
+| NFR-DEP-001 | Sites capability-path, Worker-compatible ESM, no D1/R2/auth declaration. |
+| NFR-OBS-001 | CMP-OBS-01 allowlist and local diagnostics design. |
+| CON-001–008 | Isolated tree, deterministic boundary, no relay/database, direct CORS, read-only tools, Sites target, coverage disclaimers. |
 
-## Acceptance-criterion-to-architecture traceability
+## Acceptance-criterion coverage
 
-| Acceptance criterion | Architecture evidence planned |
+| Acceptance criteria | Architectural proof point |
 |---|---|
-| AC-001 | CMP-UI-01, CMP-GEO-01, and CMP-DATA-01 support prepared regions and atomic unsupported/unavailable gating. |
-| AC-002 | CMP-UI-01 and CMP-VAL-01 provide fields, trusted origin proofs, explanations, and typed validation. |
-| AC-003 | CMP-CAL-01 owns formula/version/precision/status records and the Southland golden case. |
-| AC-004 | Pure CMP-CAL-01 contracts enable typical, boundary, invalid, conversion, and rounding unit tests. |
-| AC-005 | CMP-FLX-01 plus CMP-UI-01 provide bounded series, accessible chart summaries, and tables. |
-| AC-006 | CMP-FLX-01 owns optimality, conservation, flexible-load, destination headroom/utilisation, original-peak, and peak-reduction invariants. |
-| AC-007 | ADR-003 and CMP-EVD-01 require source-backed typed evidence with quality and explicit freshness classification. |
-| AC-008 | `CalculationBundle`, `EvidenceItem`, `OriginProof`, and CMP-RPT-01 preserve origin/trace links. |
-| AC-009 | CMP-ASM-01 owns deterministic missing-information and evidence-gating rules without automatic rejection. |
-| AC-010 | CMP-RPT-01 produces both complete views without requiring CMP-EDGE-01. |
-| AC-011 | Typed partial failures and optional-presentation-plan discard paths keep deterministic results visible. |
-| AC-012 | CMP-WEB-01 compares immutable `ResultSnapshot` records and changed assumptions. |
-| AC-013 | Architecture-level test and deployment sections define build, contract, accessibility, and journey gates. |
-| AC-014 | Security model, inert rendering, secret scan, typed failures, and ADR-002 prevent forbidden output. |
-| AC-015 | CMP-UI-01 retains units/source/confidence and text/table equivalents for visual comparisons. |
-| AC-016 | CMP-ASM-01 owns the exact five-category threshold/evidence branches and high→insufficient→moderate→all-low precedence. |
-| AC-017 | CMP-EVD-01 and ADR-003 own pinned `as-of`, 24/36-month boundaries, `validUntil`, and stale/unknown low-concern exclusion. |
-| AC-018 | CMP-FLX-01 exposes deterministic minimax feasibility/optimality and the frozen 100/50/50→125 MW oracle. |
-| AC-019 | `OriginProof` plus statement-ID-only presentation plans prevent persisted/browser/AI trust forgery and late-response mutation. |
-| AC-020 | CMP-GEO-01 and pinned geometry provide Southland/Waikato/Auckland parity plus deterministic exact-border fixtures. |
-| AC-021 | CMP-SAVE-01's transaction/revision/operation/tombstone/migration/quarantine model covers adversarial multi-tab and crash paths. |
-| AC-022 | `ReproducibilityManifest` is mandatory on complete, insufficient, and failed results and spans every constituent version. |
+| AC-001–002 | Shared map/list ID model, Stats geometry module, all-region scenario path, per-category coverage. |
+| AC-003–006 | Pure calculation/flexibility/assessment modules, exact traces, immutable manifests, property/golden-test boundaries. |
+| AC-007–009, AC-022 | Registered data compiler, typed packs/evidence, conflict/freshness model, exact EMI spatial/unit/DST pipeline. |
+| AC-010–013 | Connector worker, vault, capability/CORS matrix, Tavily/MCP routes, no-relay topology. |
+| AC-014–015 | Bounded agent protocol and schema-bound trusted visual pipeline. |
+| AC-016–019 | Shared result/evidence IDs, typed discourse/company/legislation records, deterministic comparison/report, offline failure independence. |
+| AC-020–021 | Transactional local stores, immutable data generations, accessibility/security/build/hosted verification points. |
+| AC-023–026 | Map/catalog/sheet/compare components, prepared deep case/evidence graph, controlled community model, confirmed deterministic site screening. |
 
-## Consequences and risks
+## Risks and mandatory mitigations
 
-### Positive
+| Risk | Mandatory mitigation/evidence before implementation acceptance |
+|---|---|
+| Worker protocol complexity delays delivery | Keep exactly two workers; freeze small discriminated protocols in Gate 3; contract-test cancellation/late/crash behavior before slices integrate. |
+| Map and national layers exceed browser budgets | Build-time simplification/validation, viewport filtering/clustering, worker filtering, explicit byte/feature/vertex budgets and low-memory fixtures. |
+| Persistent credentials create false security expectations | Plain disclosure, session-only mode, best-effort encryption, no read-back/export/log path, seeded-secret tests, same-origin compromise limitation. |
+| Arbitrary custom endpoints weaken CSP `connect-src` | No third-party scripts, exact connector registry enforced in worker, visible destinations, HTTPS only, strict non-connect CSP, dependency/XSS tests, document residual. |
+| Service worker serves mixed/stale assets | Content-addressed immutable assets, release manifest, generation-specific caches, atomic activation, explicit reload and rollback tests. |
+| Agent loops leak context or follow injected source instructions | User-selected context manifest, system/tool separation, bounded allowlisted tools, inert evidence, schema/citation validation, injection/failure tests. |
+| Evidence graph implies authority from connectivity | Authority/type is a deterministic record field, not graph reachability; candidate/AI edges cannot satisfy assessment gates. |
+| EMI aggregate is mistaken for capacity | Separate source semantics, explicit labels, quality/exclusion ledger, no headroom/self-sufficiency derivation contract. |
+| Prepared case documents have extraction errors | Preserve document/page/section and extraction version, source-open fallback, discrepancy/claim types, manual release QA. |
+| Offline support conflicts with fresh evidence | Cached retrieval time never changes; freshness evaluated against pinned `as-of`; live/agent items visibly cached/stale. |
 
-- Required analysis is fast, deterministic, anonymous, and resilient to external failure.
-- Static regional bundles make demonstrations reproducible and easy to audit.
-- The optional AI boundary is explicit, removable, and structurally unable to author or paraphrase facts or outcomes.
-- Pinned freshness, policy, threshold, and geometry versions make complete and partial results reproducible without the browser clock.
-- Transactional per-record persistence prevents silent independent-save loss and record resurrection across tabs.
-- Domain contracts can migrate to an API-backed architecture without rewriting formulas or tests.
+## Gate 2 approval record
 
-### Costs and risks
+The user approved **Gate 2 architecture v0.3 (Option A)**, accepting:
 
-- Every regional/evidence update requires a validated deployment.
-- IndexedDB is device/browser-profile-specific and user-clearable; it is not backup or sharing. Same-record conflicts are surfaced rather than silently merged.
-- Large evidence bundles could harm load time unless build budgets and lazy loading are enforced.
-- Client code exposes formulas and curated data, which is acceptable for transparency but unsuitable for proprietary algorithms/data.
-- Optional external AI adds variable cost, provider availability, and disclosure obligations even though it is non-authoritative and limited to presentation planning.
-- Static authoritative data creates a release obligation: supported bundles need current qualifying evidence and link/freshness validation, or affected outcomes/regions must remain insufficient/unavailable.
-- The minimax optimizer and transactional persistence are more complex than greedy shifting and a local-storage blob; frozen independent oracles and concurrency/migration tests are mandatory before implementation is trusted.
+- the main-thread plus two-worker topology;
+- browser ownership of deterministic logic and user data;
+- release-time prepared-data compiler and immutable data packs;
+- direct CORS-only custom model/MCP/live connectors with no GridLens relay;
+- separate local credential vault and transactional IndexedDB model;
+- trusted component/visual grammar and typed evidence graph;
+- versioned service-worker offline/update strategy;
+- OpenAI Sites capability-path deployment without D1, R2, or app authentication; and
+- the stated privacy, CSP, performance, failure, migration, and operational consequences.
 
-### Conditions that would invalidate this selection
-
-Return to the architecture gate if approved scope adds authenticated administration, central audit retention, shared scenario links, proposal uploads, community submissions, live evidence ingestion, large/private datasets, proprietary rules, or server-authoritative calculation. Those changes transfer data ownership and trust boundaries toward Option C/Design 2.
-
-## Approval boundary
-
-Gate 2 v0.2 approval accepts this topology, component/data ownership, minimax-optimizer boundary, pinned evidence/policy/geometry model, statement-ID-only optional AI boundary, transactional IndexedDB persistence, Sites deployment model, failure semantics, and migration consequences. It does not approve low-level schemas, algorithms, or implementation; those require revised Phase 4 logic artifacts and an independent validated verdict.
+It does not authorize production scaffolding. After approval, Phase 4 must specify all schemas, state machines, algorithms, invariants, migrations, resource limits, and tests, followed by an independent validated Gate 3 review.

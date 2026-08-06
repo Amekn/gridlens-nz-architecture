@@ -1,859 +1,2144 @@
 # GridLens NZ — Whole-system logic map
 
-**Artifact version:** 0.2  
-**Status:** Frozen logic-review candidate  
-**Contract baseline:** `05-contracts.md` 0.2
+**Artifact version:** 0.10 draft
+**Status:** Phase 4 design; awaiting independent Gate 3 validation
+**Approved baseline:** Requirements 0.4, Usage Definition 0.4, Architecture 0.3 Option A
+**Contracts:** `05-contracts.md` version 0.10 draft
+
+**Normative precedence:** the v0.10 reconciliation at the end of this artifact supersedes any conflicting v0.4/v0.5/v0.6/v0.7/v0.8/v0.9 routine or limit.
 
 ## Global invariants
 
 | ID | Invariant |
 |---|---|
-| INV-001 | No provider output participates in origin validation, arithmetic, simulation, evidence freshness, assessment, sources, unresolved questions, factual statements, or disclaimer generation. |
-| INV-002 | Detailed analysis exists only for an atomically activated `supported` bundle whose deployment, geometry, region ID, hashes, and constituent versions validate. |
-| INV-003 | Every complete, insufficient, and failed result embeds the full `ReproducibilityManifest`; no browser-clock value affects deterministic output. |
-| INV-004 | Every material report statement has a non-empty trace to calculations, evidence/facts, assessment, assumptions, presets, or warnings. |
-| INV-005 | Missing/failed inputs create typed incomplete results; they never become zero, a midpoint, a hidden omission, or inferred evidence. |
-| INV-006 | The simulator conserves 24-hour facility energy, satisfies every source/destination/original-peak constraint, and returns a deterministic minimax optimality certificate. |
-| INV-007 | Every assessment category has one typed result; insufficient evidence never becomes low concern, and community is never low in the MVP. |
-| INV-008 | No contract or state contains an overall numeric score or approval/rejection decision. |
-| INV-009 | Saved state contains raw scenario values and source references, not authoritative origin proofs, calculated results, assessments, or presentation plans; restore re-derives/recalculates. |
-| INV-010 | A committed local mutation is idempotently identified by `operationId`; concurrent tabs cannot silently lose independent records, overwrite a newer revision, or resurrect a tombstone. |
-| INV-011 | Optional AI output contains no factual text and applies only when snapshot, audience, and active request generation all still match. |
-| INV-012 | Diagnostics contain no scenario values, labels, evidence/prose, URLs, secrets, raw storage, stack traces, or stable user identifiers. |
-| INV-013 | Design 1 implementation stays under `design-1-browser-first/`; `Shared/` remains read-only and only `Shared/GridLens NZ.md` is normative. |
+| INV-001 | Only normalized, schema-valid data reaches domain operations; UI labels, restored records, URLs, model text, and graph edges never grant trust. |
+| INV-002 | Deterministic values, category outcomes, evidence authority/freshness, required statements, and disclaimers are produced only by the analysis/evidence worker. |
+| INV-003 | Every result status carries the reproducibility information available at the point of completion/failure; every completed snapshot carries the complete manifest and deterministic fingerprint. |
+| INV-004 | Result snapshots are immutable. Editing, refreshing evidence, changing release, or receiving a late response creates a new generation/snapshot and never mutates an old one. |
+| INV-005 | Raw credential bytes and key-bearing URLs never cross into UI state, analysis messages, prompts, diagnostics, exports, clipboard, service-worker cache, or production assets. |
+| INV-006 | The connector worker sends each request only to the exact configured HTTPS origin/route covered by an unexpired destination-and-content acceptance; a CORS failure never falls back to a GridLens proxy. |
+| INV-007 | External content is inert data. Tool/model/source instructions cannot issue commands, add tools beyond the five-entry read-only registry, mutate domain state, or execute/render code. |
+| INV-008 | Visuals render only from a validated `VisualOutcomeV2`/`ResolvedVisualModelV2` bound to known trusted data IDs; failure exposes the trusted table/default visual. |
+| INV-009 | Map and accessible list use the same feature/selection IDs. Boundary ties use the smallest geography ID; outside points never resolve to nearest. |
+| INV-010 | A pack dependency graph activates atomically. Shell, schema, policy, geometry, and pack generations never mix. |
+| INV-011 | Freshness is evaluated against the snapshot’s pinned `asOf`; cache hits never change observation, publication, retrieval, or expiry times. |
+| INV-012 | Stale, unknown, future-invalid, or forecast-expired evidence remains visible but never satisfies a low-concern prerequisite. |
+| INV-013 | Evidence graph reachability and AI candidate edges never elevate authority or verification state. |
+| INV-014 | Water without a valid factor returns no numeric estimate; water without current regional thresholds/evidence returns insufficient assessment, never zero/low. |
+| INV-015 | Flexibility conserves same-day energy, respects all bounds, and is labelled optimal only with a verified feasibility certificate. |
+| INV-016 | Site screening runs only on a user-confirmed profile; it retains one of five domain outcomes, maps it to one of three separate map groups, and orders only within a group, never by hidden score or objective best site. |
+| INV-017 | Economic high requires exact current authoritative contradiction. A claim above 10,000 jobs produces a warning/moderate unsupported path, not an invented high threshold. |
+| INV-018 | Explicit unrestricted fossil backup may produce high concern traced to the user assumption; restricted/battery/demand-response low/moderate requires qualifying evidence. |
+| INV-019 | Web/news discourse is never representative consultation. Mana whenua evidence remains a separate stakeholder category and aggregate. |
+| INV-020 | One metric/source/connector/storage-record failure cannot remove unaffected deterministic output or sibling records. |
+| INV-021 | Storage mutation plus operation receipt/tombstone commit in one transaction; completed tool replay plus its individual receipt also commits atomically; connector configuration and its vault records clear as one resumable dependency with no orphan path; retrying the same operation ID is idempotent. |
+| INV-022 | A tombstoned record cannot be resurrected by an older tab or migration. Corrupt records quarantine individually. |
+| INV-023 | Service-worker caches contain immutable app/data assets only, never credentials or remote model/MCP/live responses. |
+| INV-024 | Diagnostics accept only `DiagnosticEventV2` and never serialize user/source/provider text or sensitive URLs. |
+| INV-025 | EMI load/generation MW is not summed across time; node generation is context and never becomes spare capacity, self-sufficiency, or headroom. |
+| INV-026 | Public/decision-maker and People/Planet controls change presentation only; record IDs, values, sources, outcomes, and uncertainty remain identical. |
+| INV-027 | Direct public feedback and user document upload have no production route/store in the core release. |
+| INV-028 | Exactly one command-family terminal worker event is accepted per operation/generation; cancelled agents use only `agent_terminal(status=cancelled)`, other cancelled commands use only `operation_cancelled`, and obsolete generations cannot update visible state. |
 
 ## Runtime state machines
 
-### Application state
+### Application lifecycle
+
+| State | Event | Guard/action | Next |
+|---|---|---|---|
+| booting | shell loaded | register update manager; fetch release manifest | validating_core |
+| validating_core | core valid | activate generation; start workers; load local metadata | ready_online or ready_offline |
+| validating_core | candidate invalid, prior cache valid | retain prior generation; record scoped update failure | ready_offline or ready_online |
+| validating_core | no valid generation | expose retry/clear-cache diagnostics without guessing | fatal_recoverable |
+| ready_* | release available | download/validate separately | update_ready |
+| update_ready | user reloads and no active mutation | activate new generation on navigation | booting |
+| ready_* | worker crash | preserve snapshots; restart/reindex; increment generation | ready_* or degraded |
+| any | unhandled security invariant failure | fail affected operation closed; preserve deterministic record where safe | degraded |
+
+### Analysis operation slot
 
 ```text
-Booting
-  -> ManifestReady          validated manifest + geometry + region index
-  -> ShellDataFailure       retryable manifest/geometry failure
-
-ManifestReady
-  -> RegionLoading          supported or limited canonical selection
-  -> UnsupportedSelected    unsupported/outside selection
-
-RegionLoading(requestToken)
-  -> Editing                latest token activates valid supported bundle
-  -> LimitedSelected        valid limited record; detailed analysis disabled
-  -> RegionUnavailable      hash/schema/cross-version/category failure
-  -> RegionLoading          newer selection aborts/replaces token
-
-Editing
-  -> Validating             Analyse
-  -> Editing                draft change
-
-Validating
-  -> Editing                blocking issues
-  -> Calculating            valid normalized input and origin proofs
-
-Calculating
-  -> Results                immutable snapshot, including typed partial results
-  -> Editing                only when no valid regional context/snapshot is possible
-
-Results
-  -> Editing(staleSnapshot) input change
-  -> Comparing              duplicate/compare
-  -> Results                inspect/save/copy/presentation-plan events
-
-Comparing
-  -> Comparing              valid side recalculation
-  -> Results                comparison exit
+idle --ANALYSE(g=n+1)--> validating
+validating --blocking issues--> rejected
+validating --valid--> calculating --> selecting_evidence --> assessing --> freezing
+freezing --snapshot valid--> completed
+any running --CANCEL/superseded/deadline--> cancelling --> cancelled
+any running --typed module failure--> partial_or_failed
+terminal --ANALYSE(g=n+1)--> validating
 ```
 
-Forbidden: Results without a snapshot; calculation for limited/unsupported region; active bundle/scenario ID mismatch; baseline mutation; current-looking output after draft edit.
+Only the latest generation for the scenario/result slot can become active. Partial metric/category failures remain inside a valid snapshot when trace construction succeeds; a manifest/fingerprint/invariant failure rejects the entire snapshot.
 
-### Presentation-plan state per snapshot and audience
+### Pack state
 
 ```text
-Idle(generation=n)
-  -> Requesting(generation=n+1, snapshotId, audience)
-  -> Disabled
-
-Requesting
-  -> Available              only exact active generation/snapshot/audience
-  -> Unavailable            timeout|rate|provider|schema|factual_text|stale
-  -> Cancelled              navigation/snapshot/audience/new-request change
-
-Available|Unavailable|Cancelled
-  -> Requesting             explicit retry creates a new generation
-  -> Idle                   snapshot/audience change
+unloaded -> fetching -> bytes_validated -> dependencies_validated -> indexed -> active
+fetching|validating|indexing -> failed
+active -> retired only after a newer complete release activates
 ```
 
-Every transition away from Requesting aborts the fetch and increments the application generation. Post-await matching is mandatory even if abort races with a completed response.
+An optional pack failure does not deactivate other packs. A core pack failure prevents candidate generation activation.
 
-### IndexedDB repository state
+### Connector state
 
 ```text
-Closed -> Opening -> Migrating -> Ready
-Closed -> Opening -> Unavailable
-Migrating -> ReadyWithQuarantine     invalid records isolated
-Migrating -> Unavailable             database-level failure
-
-Ready -> Transaction(create|update|delete)
-Transaction -> Ready(success)
-Transaction -> Ready(conflict)
-Transaction -> Ready(failure; no partial commit)
-Transaction -> Ready(reconciled prior operationId)
-
-Ready -> VersionChangeClosing -> Closed
+unconfigured -> configured_unverified -> testing -> ready | degraded | incompatible
+ready -> in_use -> ready
+ready|degraded -> credential_locked | authentication_rejected
+any configured -> clearing -> unconfigured
+config/origin/model/header change -> configured_unverified
+capability age >24h -> configured_unverified
 ```
 
-No repository state has a last-write-wins collection blob.
+Only a successful ordinary authenticated use enables default persistent credential commit. Capability probes alone do not persist a new key.
 
-## LOG-BOOT-001 — Start application and validate deployment graph
-
-**Serves:** FR-LOC-001, FR-LOC-002, FR-DAT-001, FR-DAT-002, NFR-PER-002, NFR-REL-002.
+### Agent request state
 
 ```text
-async function bootApplication(abortSignal): AppState
-  correlation = newCorrelationId()
-  emit(startup.begin)
-  parallel:
-    manifestBytes = fetchSameOrigin(PUBLIC_DATA_MANIFEST_URL, cap=256KiB, timeout=5s)
-    storageState = repository.openAndMigrateOrUnavailable()
-  manifest = parseDeploymentManifest(manifestBytes)
-  require exact unique canonical entries southland, waikato, auckland
-  geometryBytes = fetchSameOrigin(manifest.geometry.url, cap=2MiB, timeout=5s)
-  require sha256(geometryBytes) == manifest.geometry.sha256
-  geometry = parseAndValidateGeometry(geometryBytes, manifest)
-  require geometry contains exact IDs for all indexed regions used by selection
-  emit(startup.success, versions/hashes only)
-  return ManifestReady(deepFreeze(manifest), deepFreeze(geometry), storageState)
-catch known BoundaryError e:
-  emit(startup.failure, e.code)
-  return ShellDataFailure(userMessage(e), retry=bootApplication)
-catch unknown:
-  emit(startup.failure, INTERNAL_UNEXPECTED)
-  return ShellDataFailure(genericMessage, retry=bootApplication)
+idle -> disclosure_required -> queued -> model_running
+model_running <-> tool_running (bounded)
+model_running|tool_running -> validating_result -> complete | partial | failed
+queued|running -> cancelling -> cancelled
+any response from obsolete generation -> discarded_obsolete
 ```
 
-The shell, purpose statement, and disclaimer may render first. Map/coordinate/list selection stays disabled until the canonical region index and geometry agree. Storage failure never blocks session-only analysis.
-
-## LOG-GEO-001 — Resolve coordinates and selection parity
+### Local repository record
 
 ```text
-function pointOnSegment(p, a, b): boolean
-  cross = (p.lon-a.lon)*(b.lat-a.lat) - (p.lat-a.lat)*(b.lon-a.lon)
-  if abs(cross) > 1e-12: return false
-  return p.lon within inclusive min/max(a.lon,b.lon) AND
-         p.lat within inclusive min/max(a.lat,b.lat)
-
-function ringRelation(p, ring): boundary | inside | outside
-  inside = false
-  for each edge (a,b) including closing edge:
-    if pointOnSegment(p,a,b): return boundary
-    if edge straddles p.lat and ray-to-east intersection is strictly > p.lon:
-      inside = not inside
-  return inside ? inside : outside
-
-function featureMatches(p, multiPolygon): boolean
-  for polygon in multiPolygon:
-    exterior = ringRelation(p, polygon[0])
-    if exterior == boundary: return true
-    if exterior == outside: continue
-    excludedByHole = false
-    for hole in polygon[1..]:
-      relation = ringRelation(p, hole)
-      if relation == boundary: return true
-      if relation == inside: excludedByHole = true; break
-    if not excludedByHole: return true
-  return false
-
-function resolveRegion(p, geometry): RegionResolution
-  coordinate = parseFiniteCoordinate(p) else failed(GEOMETRY_INVALID)
-  matches = sorted(feature.regionId for feature if featureMatches(coordinate, feature.geometry))
-  if matches empty: return outside(coordinate)
-  return matched(coordinate, matches, selectedRegionId=matches[0],
-                 rule=point_in_polygon_lexicographic_border)
+absent --create(op)--> live(rev=1)
+live(rev=n) --replace(expected=n, op)--> live(rev=n+1)
+live(rev=n) --delete(expected=n, op)--> tombstone(rev=n+1)
+tombstone --old replace/delete--> conflict
+valid old schema --migrate transaction--> valid current schema
+invalid/unsupported --quarantine transaction--> quarantined + original excluded
+same op at any post-commit state --> replay original receipt
 ```
 
-Map click calls `resolveRegion`; list and keyboard selection dispatch the canonical `RegionId` directly. Both paths then look up the same manifest entry. Exact-border fixtures prove lexicographic resolution. No path selects a nearest supported region. Complexity is `O(totalVertices)` with build cap 250,000 vertices and no mutation.
-
-Geometry validation has two layers. The build validator uses robust orientation/segment predicates and a sweep-line or equivalently proven library routine to reject non-finite/out-of-bounds coordinates, unclosed/short rings, adjacent duplicates, self-intersections, holes outside their exterior, and overlapping holes; it records the validated content hash. The browser rechecks the hash, schema, bounds, closure, canonical IDs, and vertex budget before activation. Cross-feature shared boundaries/overlap are permitted because the lexicographic match rule resolves them; invalid topology inside one feature is not. Test fixtures verify the selected validation implementation against independently classified valid/invalid rings.
-
-## LOG-DATA-001 — Activate a selected regional bundle atomically
+### Offline update generation
 
 ```text
-async function activateRegion(regionId, currentBundle, requestToken, abortSignal)
-  entry = manifest.regions.findExact(regionId)
-  if missing or unsupported: return UnsupportedSelected
-  if limited: return LimitedSelected
-  bytes = fetchSameOrigin(entry.bundle.url, cap=1MiB, timeout=5s, abortSignal)
-  require sha256(bytes) == entry.bundle.sha256 else ASSET_HASH_MISMATCH
-  candidate = parseRegionBundle(bytes)
-  errors = validateBundleGraph(candidate, entry, manifest, geometry):
-    exact region/canonical IDs and support status
-    compatible schema and every constituent version
-    asOfDate and all calendar dates; publication/retrieval <= asOfDate;
-      validUntil >= publicationDate when both exist
-    24 positive finite profile values
-    factor and threshold order/ranges
-    evidence/fact/reference uniqueness and closure
-    freshness-policy exact 24/36 mapping
-    assessment-policy exact approved thresholds/precedence
-    supported bundle has qualifying current source-backed evidence
-  if errors: return RegionUnavailable(stableSorted(errors))
-  if requestToken != latestSelectionToken: return cancelled
-  return Editing(atomicReplace(currentBundle, deepFreeze(candidate)))
+idle -> checking -> downloading -> validating -> ready
+checking|downloading|validating -> failed (active generation unchanged)
+ready --explicit reload--> activating -> active
+active old generation -> retired -> delete only when no controlled client uses it
 ```
 
-Validation computes evidence freshness before the final supported-bundle check. Broken external links fail release verification; if availability changes at runtime, links may be disclosed as unavailable but no evidence is fabricated. A bundle failure never partially replaces the active bundle.
-
-## LOG-EVD-001 — Classify evidence freshness against pinned date
+## LOG-BOOT-001 — Start and activate a release
 
 ```text
-function subtractCalendarMonths(date, months): ISODate
-  targetYearMonth = shift year/month backward by months
-  targetDay = min(date.day, daysInMonth(targetYearMonth))
-  return ISODate(targetYearMonth, targetDay)
+function boot(): BootOutcome
+  candidateManifest = fetchNoStore("/data/release-manifest.json")
+  if fetch failed:
+    return activateLastValidatedCacheOrRecovery(failure)
 
-function classifyItem(item, asOfDate, policy): ItemFreshness
-  if item.validUntil exists:
-    return asOfDate <= item.validUntil
-      ? current(reason=valid_until_current, boundary=item.validUntil)
-      : stale(reason=valid_until_expired, boundary=item.validUntil)
-  if item.publicationDate missing:
-    return unknown_freshness(reason=publication_date_missing)
-  boundary = subtractCalendarMonths(asOfDate, policy.monthsByCategory[item.category])
-  return item.publicationDate >= boundary
-    ? current(reason=within_window, boundary)
-    : stale(reason=past_window, boundary)
+  if not validateReleaseManifest(candidateManifest):
+    return activateLastValidatedCacheOrRecovery(PACK_MANIFEST_INVALID)
 
-function selectEvidence(bundle): EvidenceSelection
-  for category in EvidenceCategory enum order:
-    items = stableSort(bundle.evidence where category, publicationDate desc then id)
-    if items empty: status = missing(category_missing)
+  coreGraph = resolveDependencyGraph(candidateManifest.corePackIds)
+  for each asset in coreGraph in topological order:
+    bytes = fetchSameOrigin(asset.relativeUrl)
+    require byteLength <= descriptor.byteLengthBudget
+    require sha256(bytes) == descriptor.sha256
+    parsed = schemaValidate(bytes, expected schema major)
+    require crossReferencesResolveWithinGraph(parsed)
+  require geometry/list/catalog IDs reconcile
+  require policy/factor/profile/evidence references reconcile
+
+  build read-only indexes in analysis worker
+  start connector worker without loading any credential
+  activate cache generation candidateManifest.releaseId atomically
+  restore local metadata and validate each record independently
+  emit BOOT_READY(releaseId, onlineState, quarantinedCount)
+```
+
+Preconditions: same-origin shell and supported browser. Postconditions: exactly one complete validated release generation is active or the app is in explicit recovery. Complexity is `O(total core bytes + references)` under release budgets.
+
+## LOG-PACK-001 — Load an optional regional/case/layer pack
+
+```text
+function loadPack(packId, generation, signal): PackOutcome
+  reject if packId not declared by active release
+  return existing active index if already loaded for same release
+  deduplicate concurrent loads by (releaseId, packId)
+  fetch, size-check, hash, parse, and schema-check
+  resolve only dependencies declared in active release
+  validate all source/licence/coverage records and stable IDs
+  build temporary indexes off to the side
+  if signal cancelled or generation obsolete: discard temporary indexes
+  else atomically publish indexes and PACK_READY
+```
+
+At most four optional pack fetches and one index build run concurrently. The loader applies backpressure rather than allowing viewport changes to create an unbounded queue.
+
+## LOG-GEO-001 — Resolve geography deterministically
+
+```text
+function resolvePoint(pointWgs84, geometrySet): LocationSelection
+  require finite longitude [-180,180] and latitude [-90,90]
+  matches = geometrySet.polygons where bboxContains(point) and pointInPolygonInclusive(point)
+  if matches empty:
+    return { point, resolution: outside_recognized_geometry, candidateOnly: true }
+  chosen = sort(matches by geographyId ascending)[0]
+  resolution = matches.length > 1 ? boundary_tie : inside
+  return { geographyId: chosen.id, point, method, resolution,
+           candidateOnly: true, geometrySetId }
+```
+
+`pointInPolygonInclusive` uses one frozen robust algorithm/tolerance and handles holes. Test fixtures include vertices, edges, antimeridian-irrelevant NZ bounds, Chatham, and outside points. The list path sets the same `geographyId` without fabricating a point.
+
+The UI never calls `resolvePoint` directly. It sends `resolve_location` through the coordinator to the analysis worker. Coordinate-entry text is parsed and range-validated there; map/list inputs are revalidated against the pinned geometry-set hash. The worker returns `LocationResolutionOutcomeV2`, including every boundary candidate ID and the lexicographically selected result.
+
+## LOG-MAP-001 — Search, filter, render, and select
+
+```text
+function queryMap(query, viewport, enabledLayerIds, generation): MapViewModel
+  validate query length <= 200 and layer IDs belong to active release
+  projectMatches = normalized token/prefix search over catalog name/aliases
+  placeMatches = normalized local place index search
+  for each enabled layer:
+    if descriptor disabled/missing: emit qualified disabled state
+    else query worker spatial index by viewport and feature budget
+  cluster or summarize when returned feature count exceeds render budget
+  return features and accessibleRows referencing identical stable IDs,
+         layer provenance/coverage, legend semantics, and result counts
+
+onSelect(featureId):
+  resolve catalog/feature record by ID
+  update one selection object consumed by both map and list
+  open project sheet; never infer suitability from marker/layer proximity
+```
+
+Map WebGL failure swaps to accessible rows/region summaries without changing selection or evidence state.
+
+## LOG-CASE-001 — Build a trusted Project Case File
+
+```text
+function buildCaseView(projectId, audience, lens, evidenceSnapshot): CaseView
+  case = requireValidatedProjectCase(projectId)
+  records = evidenceGraph.records(case.evidenceIds)
+  events = sort(case.events by known date, precision, stable ID)
+  conflicts = retain all unresolved/precedence records
+  community = group controlled records; keep mana_whenua group distinct
+  counts = recompute current/stale/claim/missing-conflict/ai counts
+  require counts == case declared counts or mark pack invalid
+  sections = trustedComponentRegistry.compose(case, audience, lens)
+  for missing section: insert explicit missing panel and questions
+  return sections with stable record/source/page IDs and identical underlying data
+```
+
+No document extract becomes an instruction. An extracted claim opens its document/page/section or documented fallback. Public/decision-maker and lens filtering hides density, not contradictory or missing evidence.
+
+## LOG-VAL-001 — Normalize a scenario and issue origin proofs
+
+```text
+function normalizeScenario(draft, activeUiAction, preset?, preparedEvidence?): ValidationOutcome
+  schema-check draft shape and bounded strings
+  parse decimals using locale-independent decimal grammar
+  emit blocking issues for nonfinite/syntax/hard ranges/incompatible combinations
+  emit warnings for capacity>1000, PUE>3, jobs>10000, investment>1e11
+  preserve custom/unknown controlled values; do not map to favourable defaults
+
+  for each field:
+    if value came from current user edit: issue user_assumption proof
+    else if selected current release preset: issue versioned_preset proof with pack ID
+    else if explicitly imported from proposal claim: issue proposal_claim proof with evidence ID
+    else if exact qualifying prepared evidence reference: issue verified_evidence proof
+    else reject claimed origin and issue untrusted_origin warning/block as applicable
+
+  discard all origin labels embedded in draft/restored records
+  return normalized immutable scenario + proofs + warnings
+```
+
+Precondition: active release. Postcondition: every material field has one engine-issued proof. Normalization is pure for the supplied active action/references.
+
+## LOG-CAL-001 — Calculate scenario metrics
+
+```text
+function calculate(normalized, factorSet, asOf): CalculationBundle
+  facility = exact(normalized.itCapacityMw * normalized.pue)
+  annualGwh = exact(facility * normalized.utilisationRatio * 8760 / 1000)
+  flexibleMw = exact(facility * normalized.flexibleWorkloadRatio)
+
+  if cooling unknown/custom without approved mapping:
+    water = insufficient(MISSING_COOLING_FACTOR)
+  else factor = select one applicable versioned factor for cooling/asOf
+    if none or ambiguous or missing evidence: water = insufficient
     else:
-      classified = items.map(classifyItem)
-      qualifying = classified current items where isSourceBacked(item)
-      aggregate status = current if any current
-                         else stale if any stale
-                         else unknown_freshness
-    emit explicit EvidenceCategoryStatus even when missing
-  return immutable selection with all contextual items and full manifest
+      energyKwh = facility * 1000 * utilisation * 8760
+      minM3 = energyKwh * factor.minLPerKwh / 1000
+      maxM3 = energyKwh * factor.maxLPerKwh / 1000
+      peakDayEnergyKwh = facility * 1000 * 24
+      minPeakDayM3 = peakDayEnergyKwh * factor.minLPerKwh / 1000
+      maxPeakDayM3 = peakDayEnergyKwh * factor.maxLPerKwh / 1000
+      require 0 <= minM3 <= maxM3 and 0 <= minPeakDayM3 <= maxPeakDayM3
+      water = complete(annual, average-day, and peak-day ranges,
+                       trace using both conservative maxima for assessment)
+
+  return independently typed metrics with exact traces and display rounding metadata
 ```
 
-`isSourceBacked` excludes `developer_claim`, `community_submission`, and `unknown_unverified` quality. `isCurrentAuthoritative` additionally requires quality primary/secondary authoritative and source type government/council/infrastructure_provider/research. Exact boundary equality is current. The function never reads the browser clock.
-
-## LOG-VAL-001 — Parse draft and derive trusted origins
+Worked Southland fixture:
 
 ```text
-function validateDraft(draft, activeBundle, manifest): ValidationResult
-  parse raw fields with strict canonical decimal/integer/boolean/enum rules
-  apply hard ranges from CTR-003; collect stable blocking issues
-  require regionId == activeBundle.region.id and supported
-  if blocking: return invalid(issues sorted by field order then code)
-
-  for each FieldName in normalized input:
-    selection = draft.sourceSelections[field] default user_edit
-    proof = resolveOrigin(selection, field, canonicalValue):
-      user_edit -> user_assumption
-      preset_ref -> find exact manifest preset/version and exact canonical field value;
-                    mismatch/missing => blocking ORIGIN_REFERENCE_INVALID/MISMATCH
-      proposal_claim_ref -> find exact ProposalClaim, require its evidence sourceType
-                            is developer and its field/value match; otherwise blocking
-      verified_fact_ref -> find fact ID, require its kind maps to field, exact value,
-                           all cited evidence exists; otherwise blocking
-    never accept a claimed InputOrigin or persisted OriginProof
-  if origin issue blocking: return invalid
-  normalized = deepFreeze(ScenarioInput(values, originProofs))
-  warnings = runVersionedSuspicionRules(normalized)
-  return valid(normalized, stableSorted(warnings))
+IT=50 MW, PUE=1.3, utilisation=0.8, flexibility=0.3
+facility = 50×1.3 = 65 MW
+annual = 65×0.8×8760÷1000 = 455.52 GWh
+flexible upper bound = 65×0.3 = 19.5 MW
 ```
 
-Restore supplies only `rawScenario` and `SourceSelection`; the same function re-derives proofs. User edits after preset/evidence selection immediately replace that field’s selection with `user_edit`.
+Display rounding never feeds later calculations. Complexity is constant.
 
-## LOG-CAL-001 — Calculate facility metrics and water ranges
+## LOG-FLX-001 — Build and solve the 24-hour minimax simulation
 
-All arithmetic uses a deterministic decimal library configured once; canonical strings feed calculations and golden tests. Each constructor embeds the same frozen manifest.
+### Build inputs
 
 ```text
-function calculateScenario(input, bundle, manifest): CalculationBundle
-  demand = dec(input.itCapacityMw) * dec(input.pue)
-  annual = demand * dec(input.utilisation) * 8760 / 1000
-  configuredFlexible = demand * dec(input.flexibleWorkloadRatio)
-  activeLoad = demand * dec(input.utilisation)
-  activeFlexible = activeLoad * dec(input.flexibleWorkloadRatio)
-  records = five complete MetricResult values with formula IDs, inputs, units,
-            canonical decimals, display precision, and manifest
-
-  if coolingMethod == unknown:
-    water = insufficient(cooling_method_required, manifest)
-  else if factor missing/invalid/dangling evidence:
-    water = failed(WATER_FACTOR_MISSING, manifest)
-  else:
-    annualMin = annual * factor.minLitresPerKwh
-    annualMax = annual * factor.maxLitresPerKwh
-    peakDailyMin = demand * 24 / 1000 * factor.minLitresPerKwh
-    peakDailyMax = demand * 24 / 1000 * factor.maxLitresPerKwh
-    annualRange = RangeCalculation(
-      minMetricId=annual_water_min_ml, maxMetricId=annual_water_max_ml,
-      minValue=annualMin, maxValue=annualMax,
-      minUnroundedCanonical=canonical(annualMin),
-      maxUnroundedCanonical=canonical(annualMax),
-      unit="ML", displayPrecision=2, formulaId=annual_water_range,
-      inputRefs=["/records/annual_energy_gwh/value",
-                 pointer("/region/factors/coolingFactors", coolingMethod,
-                         "minLitresPerKwh"),
-                 pointer("/region/factors/coolingFactors", coolingMethod,
-                         "maxLitresPerKwh")],
-      assumptions=["water.factor_basis.facility_energy"], manifest)
-    peakDailyRange = RangeCalculation(
-      minMetricId=peak_daily_water_min_ml, maxMetricId=peak_daily_water_max_ml,
-      minValue=peakDailyMin, maxValue=peakDailyMax,
-      minUnroundedCanonical=canonical(peakDailyMin),
-      maxUnroundedCanonical=canonical(peakDailyMax),
-      unit="ML", displayPrecision=3, formulaId=peak_daily_water_range,
-      inputRefs=["/records/facility_demand_mw/value",
-                 pointer("/region/factors/coolingFactors", coolingMethod,
-                         "minLitresPerKwh"),
-                 pointer("/region/factors/coolingFactors", coolingMethod,
-                         "maxLitresPerKwh")],
-      assumptions=["water.factor_basis.facility_energy",
-                   "water.peak_day.constant_facility_demand_24h"], manifest)
-    water = complete(annual=annualRange, peakDaily=peakDailyRange,
-                     factorVersion=factor.version,
-                     factorEvidenceIds=factor.evidenceIds, manifest)
-  return deepFreeze(bundle)
+function buildFlexInput(scenario, calculations, profile, policy): FlexibilityInput
+  require facility/flexible metrics complete and profile has 24 valid slots
+  B[h] = facilityDemandMw * utilisationRatio for every h
+  C[h] = regionalLoadMw[h] + B[h]
+  P0 = max(C)
+  sourceHours = first policy.peakHourCount hours sorted by
+                (regionalLoad desc, hour index asc)
+  eligiblePerSourceMwh = min(maximumFlexibleLoadMw, B[h]) * slot.durationHours
+  movableEnergy[h] = eligiblePerSourceMwh if h in sourceHours else 0
+  destinationLimitMw[h] = facilityDemandMw * policy.maximumDestinationUtilisationRatio
+  destinationHeadroomMw[h] = max(0, P0 - C[h])
+  return validated input; source hours are not destinations in version 1
 ```
 
-Southland oracle:
+### Feasibility predicate
 
 ```text
-capacity=50, PUE=1.3, utilisation=0.8, flexibility=0.30
-facility demand = 65 MW
-annual energy = 65 * 0.8 * 8760 / 1000 = 455.52 GWh
-configured shiftable capacity = 19.5 MW
-average active load = 52 MW
-average active flexible load = 15.6 MW
+function feasibleAtPeak(T, input): Feasibility
+  require T <= P0 and T >= 0
+  requiredRemoval[s] = max(0, C[s] - T) * duration[s] for each source
+  if any requiredRemoval[s] > movableEnergy[s] + EPS: return false
+
+  destinationCapacity[d] = max(0, min(
+      input.destinationHeadroomMw[d],
+      input.destinationUtilisationLimitMw[d] - B[d],
+      P0 - C[d],
+      T - C[d]
+    )) * duration[d]
+  return sum(requiredRemoval) <= sum(destinationCapacity) + EPS
 ```
 
-Water failure/insufficiency never changes the five electricity metrics. Complexity/memory are `O(1)`.
+Because each source can move to every non-source destination and all work is fungible within the same day, aggregate capacity plus each source bound is sufficient. `feasibleAtPeak(T)` is monotone.
 
-Frozen Southland simulation oracle used by logic and tests:
-
-```text
-profile MW by hour = [80,78,76,74,72,70,68,66,64,62,60,58,
-                      56,54,52,50,48,46,44,42,40,38,36,34]
-peakHourCount=4; maxDestinationUtilisation=1.0
-Southland scenario B=52 MW, F=15.6 MW, facilityDemand=65 MW
-source hours=[0,1,2,3]; original combined peak=132 MW
-optimal target=124 MW because non-source hour 4 already has 72+52=124 MW
-remove 15.6 MWh from each source (62.4 MWh total)
-destination additions by hour:
-  h5=2, h6=4, h7=6, h8=8, h9=10, h10=12, h11=13, h12=7.4
-shifted combined peak=124 MW; reduction=8 MW; remaining eligible=0
-```
-
-The deterministic source/destination-hour tie-break expands those aggregate additions into the exact movement ledger. Tests assert both the per-hour deltas and the reconstructed ledger sums, not only the peak value.
-
-## LOG-FLX-001 — Deterministic minimax simulation
-
-The primary objective is the smallest feasible maximum combined regional-plus-facility load. When strict improvement exists, the secondary objective moves as much eligible source work as possible without exceeding that optimal peak. If no strict improvement is feasible, no work moves.
+### Optimize and construct a deterministic ledger
 
 ```text
-function buildProblem(input, calculations, profile, factors)
-  require 24 positive regional MW and five complete electricity metrics
-  B = averageActiveLoadMw
-  F = min(averageActiveFlexibleLoadMw, B)
-  facilityDemand = facilityDemandMw
-  destinationFacilityCap = min(facilityDemand,
-                               facilityDemand * factors.maxDestinationUtilisation)
-  if destinationFacilityCap < B:
-    return failed(SIMULATION_INFEASIBLE,
-                  reason=baseline_exceeds_destination_utilisation_cap)
-  P0 = max(profile[h] + B)
-  S = top peakHourCount indices sorted by (profile desc, hour asc)
-  D = remaining indices sorted hour ascending
-  return immutable problem
+function simulateFlexibility(input, operation): FlexibilityResult
+  validate all arrays, durations, limits, and P0
+  if maximumFlexibleLoadMw == 0 or movable total == 0:
+    return complete(identity result, exact certificate)
 
-function feasibility(problem, targetPeak T): Feasibility
-  // All comparisons in this predicate are exact deterministic-decimal comparisons.
-  required = 0
-  maximumSourceRemoval = 0
-  for s in S:
-    minRemove[s] = max(0, profile[s] + B - T)
-    maxRemove[s] = F
-    if minRemove[s] > maxRemove[s]: return infeasible
-    required += minRemove[s]
-    maximumSourceRemoval += maxRemove[s]
-  destinationCapacity = 0
-  for d in D:
-    if profile[d] + B > T: return infeasible
-    cap[d] = max(0, min(destinationFacilityCap,
-                        T - profile[d]) - B)
-    destinationCapacity += cap[d]
-  if required > destinationCapacity: return infeasible
-  return feasible(minRemove, maxRemove, cap,
-                  maxShift=min(maximumSourceRemoval, destinationCapacity))
+  analyticalLower = max(
+    max over sources of C[s] - movableEnergy[s]/duration[s],
+    max over destinations of C[d],
+    totalCombinedEnergyMwh / sum(slot durations)
+  )
+  low = analyticalLower
+  high = P0 // always feasible with required removal zero
+  lastInfeasible = null
+  repeat up to policy.maximumFeasibilityIterations:
+    check cancellation/deadline
+    if high-low <= EPS: break
+    mid = exact((low+high)/2)
+    if feasibleAtPeak(mid): high=mid else: low=mid; lastInfeasible=mid
+  T = high
+  require feasibleAtPeak(T)
 
-function findOptimalPeak(problem): CertificateSeed
-  averageLower = (sum(profile) + 24*B) / 24
-  nonSourceLower = max(profile[d] + B for d in D, default=0)
-  sourceLower = max(profile[s] + B - F for s in S, default=0)
-  low = max(averageLower, nonSourceLower, sourceLower)
-  high = P0
-  if feasibility(low) is feasible:
-    lowerProbe = max(0, low-EPS)
-    require feasibility(lowerProbe) is infeasible
-    return optimalPeak=low, lastInfeasibleLowerPeak=lowerProbe
-  lastInfeasible = low
-  repeat at most 80 while high-low > EPS:
-    mid = (low+high)/2
-    if feasibility(mid) feasible: high = mid
-    else: lastInfeasible = mid; low = mid
-  require feasibility(high) feasible
-  return optimalPeak=high, lastInfeasibleLowerPeak=lastInfeasible
+  sourceRemoval = requiredRemovalAt(T)
+  destinationCapacity = capacityAt(T)
+  // secondary objective: shift as much eligible energy as possible without raising T
+  extra = min(sum(movable-sourceRemoval), sum(destinationCapacity)-sum(sourceRemoval))
+  add extra to sourceRemoval by source hour ascending within movable bounds
 
-function allocateAtOptimalPeak(problem, T): Allocation
-  if T >= P0: return baseline with zero movements
-  f = feasibility(T); require feasible
-  targetShift = f.maxShift
-  removal[s] = f.minRemove[s]
-  extra = targetShift - sum(removal)
-  for s in S sorted hour ascending:
-    add = min(extra, f.maxRemove[s]-removal[s])
-    removal[s] += add; extra -= add
-  destinationAdd[d] = 0
-  remainingDestination = targetShift
-  for d in D sorted hour ascending:
-    add = min(remainingDestination, f.cap[d])
-    destinationAdd[d] = add; remainingDestination -= add
-  construct movement ledger by matching sources then destinations, both hour ascending
-  shifted[s] = B-removal[s]; shifted[d] = B+destinationAdd[d]
-  return allocation
+  remainingBySource = sourceRemoval
+  remainingByDestination = destinationCapacity
+  movements=[]
+  for source ascending:
+    for destination ascending:
+      moved=min(remainingBySource[source], remainingByDestination[destination])
+      if moved>0: append movement; decrement both
 
-function simulateFlexibility(...): SimulationBundle
-  problem = buildProblem(...)
-  seed = findOptimalPeak(problem)
-  allocation = allocateAtOptimalPeak(problem, seed.optimalPeak)
-  result = construct points/ledger/metrics/certificate/manifest
-  verify every CTR-005 invariant independently from result
-  if any fail: return failed(SIMULATION_INVARIANT_FAILED, manifest)
+  reconstruct shifted facility/combined arrays from ledger
+  certificate={lowerBound:lastInfeasible or analyticalLower, upperBound:T,
+               iterations, toleranceMw:EPS}
+  independently verify every invariant and lower-bound infeasibility
+  if any check fails: return failed(CAL_FLEX_INVARIANT)
   return complete result
 ```
 
-Binary-search feasibility is monotone: increasing `T` weakly reduces required removal and weakly increases destination capacity. Complete bipartite source-to-destination movement means the aggregate capacity condition is sufficient. `EPS=1e-9 MW` terminates binary search and bounds reconstructed invariant comparisons; it never relaxes the feasibility predicate or turns an infeasible target into a feasible one. The certificate records an exactly feasible target and an exactly infeasible lower probe. The independent verifier recomputes source/destination sums from the ledger and checks `feasibility(lastInfeasibleLowerPeak)` is false unless the analytical lower bound is the target within EPS, in which case it checks the explicit `target-EPS` lower probe.
+Required independent checks:
 
-Frozen reviewer counterexample:
+- source removal and destination additions match ledger;
+- daily facility energy conserved within exact decimal tolerance;
+- no negative load and no source exceeds movable energy;
+- no destination exceeds headroom, utilisation limit, original peak, or `T`;
+- achieved maximum equals reconstructed series maximum;
+- `feasibleAtPeak(T)` true and last lower probe false unless lower bound is within EPS;
+- stable ordering and canonical result independent of map/object iteration order.
+
+Frozen counterexample:
 
 ```text
-regional=[100,50,50,75 repeated for hours 3..23], facilityDemand=100, utilisation=0.5,
-flexibility=1, peakHourCount=1, maxDestinationUtilisation=1
-B=50, F=50, P0=150, S=[0]
-optimal T=125; non-source hours 3..23 already equal the 125 MW floor;
-destination caps at hours 1 and 2 are 25 each
-secondary objective removes all 50 MWh and allocates 25 MWh to each destination
-shifted combined peak=125; reduction=25; remaining eligible=0
+regional=[100,50,50,75×21], facilityDemand=100, utilisation=.5,
+flexibility=1, peakHourCount=1, maximumDestinationUtilisation=1
+B=50, P0=150, source=[0], movable=50 MWh
+non-source hours 3..23 create a 125 MW floor
+at T=125, hours 1 and 2 each accept 25 MWh
+ledger=[0→1:25, 0→2:25], achieved peak=125 MW, shifted=50 MWh
 ```
 
-Boundary oracles include 0% flexibility, 100% utilisation with no destination cap, flat profile/no strict improvement, utilisation cap below baseline, insufficient destination capacity, exact ties, invalid profile, and floating values within EPS. Complexity is `O(H log((P0-low)/EPS) + H²)` and bounded by `H=24`, 80 feasibility passes, and 576 ledger pairs.
+Complexity is `O(H log((P0-low)/EPS) + H²)` with `H=24`, at most 80 feasibility iterations and 576 ledger pairs.
 
-## LOG-ASM-001 — Detect predefined missing information
-
-```text
-function detectMissingInformation(input, calculations, simulation, evidence, facts, thresholds)
-  add grid connection/capacity questions unless qualifying current grid evidence/facts
-  add cooling/annual/peak/source/dry-period questions when water incomplete,
-      thresholds absent, or qualifying current water evidence absent
-  add capacity/duration/commitment/restriction questions when resilience fact incomplete
-  add workload/deadline/commitment questions when flexibility > 0
-  add employment basis/role questions unless exact current verified economic fact
-  add representative consultation question unless current representative fact
-  add staging option when not staged
-  return unique stable list in category/question order
-```
-
-The critic is structural, deterministic, and bundle-bounded. It does not infer absence from unrestricted sources or recommend approval/rejection.
-
-## LOG-ASM-002 — Apply category and overall assessment policies
-
-Helpers:
+## LOG-EVD-001 — Evaluate freshness and coverage
 
 ```text
-qualifyingCurrent(category) = evidence category status current items filtered by
-                              isCurrentAuthoritative where policy requires authority
-factIsCurrentAuthoritative(fact) = fact.evidenceIds is non-empty AND every fact
-                                   evidence ID resolves to a current authoritative
-                                   item for the relevant category
-band(value,bands) = low if value<=lowMax; moderate if value<=moderateMax; else high
-```
-
-### Electricity
-
-```text
-if simulation failed OR no current authoritative electricity demand fact/evidence
-   OR no current authoritative grid evidence OR regionalPeak<=0:
-  insufficient
-else:
-  ratio = max(0, shiftedCombinedPeakMw-regionalPeak) / regionalPeak
-  if ratio <= 0.05:
-    low
-  else if ratio <= 0.15:
-    moderate
+function freshness(evidence, asOf, policy): FreshnessEvaluation
+  basis = evidence.observationEnd ?? evidence.publicationAt
+  if basis absent: return unknown
+  if basis > asOf and not forecastValidityCovers(evidence, asOf): return future_invalid
+  if evidence.validUntil exists:
+    expiry = evidence.validUntil
   else:
-    high
+    months = category in {cooling, planning, legislation, environment} ? 36 : 24
+    expiry = addCalendarMonthsUtcClamped(basis, months)
+  return asOf <= expiry ? current : stale // exact boundary inclusive
+
+function coverage(category, geography, expected, evidence, sourceFailures, asOf): CoverageRecord
+  relevant = evidence matching exact category and geography, or explicit national fallback
+  classify freshness for each
+  missing = expected fields/sources not represented
+  if sourceFailures and no usable records: failed
+  else if relevant empty: missing
+  else if all relevant stale/unknown/future: stale
+  else if missing nonempty or only national fallback: partial
+  else complete
+  return record with all contributing/missing/stale/failed IDs
 ```
 
-The exact 5% and 15% boundaries are inclusive in the lower band. Configured flexibility never changes the outcome except through the verified shifted peak.
+National fallback remains `national context`, cannot satisfy regional evidence gates, and lowers coverage. Material conflicts retain both evidence definitions/times/geographies unless an exact field-level registry precedence rule applies.
 
-### Water
+## LOG-EVD-002 — Query evidence graph and discrepancies
 
 ```text
-if water not complete OR thresholds missing/invalid
-   OR threshold evidence is not current authoritative water evidence:
-  insufficient
-else:
-  annualRank = band(water.annual.maxValue, thresholds.annualUpperMl)
-  peakRank = band(water.peakDaily.maxValue, thresholds.peakDailyUpperMl)
-  outcome = worse(annualRank, peakRank)
+function queryEvidence(seedIds, edgeTypes, filters): EvidenceSubgraph
+  validate every seed/filter and cap seeds<=50, depth<=2, records<=1000
+  traverse accepted prepared/manual edges only for trusted view
+  optionally include candidate AI edges in a separate labelled collection
+  load records by stable ID; do not infer authority from path
+  detect claim contradictions only from explicit contradiction edges/field comparator rules
+  retain superseded record and link; never overwrite history
+  sort by requested stable rule then ID
 ```
 
-Cooling efficiency alone never produces an assessment. Conservative upper estimates drive both comparisons.
+Community queries group by stance/theme/stakeholder/evidence quality, not demographics. Representative percentages are emitted only when a current qualifying methodology record declares sampling/population/measure; otherwise the output is counts of sources/records with non-representative warning.
 
-### Resilience
+## LOG-ASM-001 — Apply the five assessment policies
 
 ```text
-if backup in diesel|gas|mixed:
-  if generatorRestrictionsEnabled is false: high
-  else if current authoritative fossil fact has operatingRestrictionsConfirmed=true:
+function assessElectricity(snapshotInputs): AssessmentResult
+  require simulation complete, regionalPeak>0,
+          current qualifying regional demand evidence,
+          current qualifying grid evidence
+  else insufficient
+  addedRatio = max(0, achievedCombinedPeak-regionalPeak)/regionalPeak
+  if addedRatio <= .05: low
+  else if addedRatio <= .15: moderate
+  else high
+
+function assessWater(water, annualThreshold, peakDayThreshold, evidence): AssessmentResult
+  require water complete and valid current regional threshold records
+          for annual and peak-day measures, both backed by current qualifying water evidence
+  else insufficient
+  annualBand = bandInclusive(water.maximumM3PerYear, annualThreshold bands)
+  peakBand = bandInclusive(water.maximumM3PerPeakDay, peakDayThreshold bands)
+  return worse(annualBand, peakBand)
+
+function assessResilience(scenario, evidence): AssessmentResult
+  if backup in {diesel,gas,mixed} and restriction == unrestricted:
+    return high traced to explicit user/proposal assumption
+  if backup in {diesel,gas,mixed}:
+    if current qualifying evidence verifies emergency/time restriction: moderate
+    else insufficient
+  else if backup==battery or demandResponse enabled:
+    if current qualifying evidence verifies capacity>0, duration>0, commitment: low
+    else insufficient
+  else insufficient
+
+function assessEconomic(scenario, evidence): AssessmentResult
+  claims = positive permanent jobs and positive investment claims
+  if none: insufficient
+  if current qualifying authoritative fact of exact claim kind/basis contradicts value: high
+  if every material claim has verified-evidence origin and exact current independent basis,
+     and job evidence includes role detail: low
+  else:
+    reasons include unsupported/proposal/user/stale/unknown basis
+    if permanentJobs>10000 add suspicion warning reason
     moderate
-  else: insufficient
-else if backup is battery OR demandResponseEnabled:
-  qualifying = current authoritative matching battery/DR fact with
-               capacity>0, duration>0, commitmentConfirmed
-  if qualifying: low
-  else: insufficient
-else:
-  insufficient
+
+function assessCommunity(projectOrRegion, evidence): AssessmentResult
+  representative = current qualifying representative consultation/survey records
+  if none: insufficient
+  if any qualifying record declares high/material opposition/concern: high
+  if any declares moderate/conditional/material unresolved concern: moderate
+  if records explicitly support low concern under qualifying method: low
+  else insufficient
+
+function overall(categoryResults): OverallNarrative
+  if any high: substantial_issues
+  else if any failed or insufficient: evidence_incomplete
+  else if any moderate: potentially_suitable_with_conditions
+  else lower_concern_review_required
 ```
 
-A fossil backup classification takes precedence even when demand response is enabled or a battery/DR fact is present. A boolean battery/DR/restriction label alone cannot produce low/moderate. An explicit absence of fossil restrictions is a high-concern scenario assumption and is traced as such.
+Every result has nonempty reason IDs, decisive inputs, qualifying/contextual evidence, policy version, conflicts and missing items. Trace construction failure makes the category failed; overall becomes evidence incomplete. No score is calculated.
 
-### Economic contribution
+Boundary table:
+
+| Added electricity ratio | Current qualifying demand/grid | Outcome |
+|---:|---|---|
+| exactly 5% | yes | low |
+| greater than 5%, exactly 15% | yes | moderate |
+| greater than 15% | yes | high |
+| any | missing/stale/unknown | insufficient evidence |
+
+## LOG-SNAP-001 — Freeze an analysis snapshot
 
 ```text
-claims = permanent_jobs when >0 plus investment_nzd when present and >0
-if claims empty: insufficient
-else if any current authoritative fact of same claim kind contradicts submitted value
-        OR submitted value violates high suspicion/implausibility rule:
-  high
-else if every material claim has verified_evidence OriginProof referencing an exact
-        current authoritative fact with basisDetail, and permanent_jobs fact also
-        has non-empty roleDetail:
-  low
-else if any claim origin is user_assumption|preset|proposal_claim
-        OR supporting evidence is developer_claim/stale/unknown:
-  moderate
-else:
-  insufficient
+function analyse(draft, generation, activeRelease, selectedPacks): AnalysisOutcome
+  validate generation and core/selected packs
+  asOf = readClockOnceAsUtcInstant()
+  normalized = normalizeScenario(draft, active action/references)
+  if blocking issues: return rejected without snapshot
+  calculations = calculate(normalized, factorSet, asOf)
+  flexibility = simulate or typed insufficient/failed when profile unavailable/incompatible
+  evidenceSnapshot = select exact records/coverage/conflicts and evaluate freshness at asOf
+  assessments = assess independently
+  overall = deterministic precedence
+  statements = buildTrustedStatements(normalized, calculations, evidence, assessments)
+  manifest = close over every app/algorithm/policy/pack/hash/source/profile/factor/threshold ID
+  canonicalDomain = canonicalJson(excluding createdAt/correlationId, preserving ordered series)
+  fingerprint = sha256(canonicalDomain)
+  snapshotId = "snap_" + fingerprint prefix
+  require manifest closure and all referenced IDs resolve
+  return deepFrozen ResultSnapshot
 ```
 
-Zero jobs is absence of a material contribution claim, not automatically high. One asserted job, preset, or forged origin cannot produce low.
-
-### Community
-
-```text
-representativeFacts = current authoritative community facts where representative=true
-if none: insufficient
-else if any concernLevel=high: high
-else: moderate // includes moderate concern or no representative basis for low
-```
-
-The MVP never emits low community concern.
-
-### Overall
-
-```text
-if any completed category high: substantial_issues_require_investigation
-else if any failed OR any completed category insufficient:
-  evidence_incomplete
-else if any completed category moderate:
-  potentially_suitable_with_conditions
-else:
-  lower_concern_professional_review_required
-```
-
-Every completed category has non-empty reasons and explicit exact inputs, policy/threshold versions, qualifying evidence, and contextual evidence. Failure to construct a valid trace produces a failed category, which triggers evidence-incomplete overall.
-
-## LOG-SNAP-001 — Create immutable result snapshot
-
-```text
-function analyse(draft, activeDeployment, activeBundle): AnalysisResult
-  validation = validateDraft(...)
-  if invalid: return ValidationFailure
-  manifest = buildAndValidateCompleteReproducibilityManifest(activeDeployment,bundle)
-  calculations = calculateScenario(input,bundle,manifest)
-  simulation = simulateFlexibilityOrTypedFailure(input,calculations,bundle,manifest)
-  evidence = selectEvidence(bundle,manifest)
-  missing = detectMissingInformation(...)
-  assessment = assess(...,manifest)
-  canonical = canonicalJson({scenario,manifest,calculations,simulation,evidence,assessment})
-  snapshotId = sha256(canonical)
-  return SnapshotReady(deepFreeze(ResultSnapshot(snapshotId, now, correlationId,...)), warnings)
-```
-
-Canonical JSON sorts object keys and stable-ID sets, preserves ordered tuples/series, canonicalises decimals and dates, and excludes `createdAt`/`correlationId`. Repeating identical normalized inputs and constituent versions returns identical domain fields and snapshot ID, including water, simulation, evidence statuses, assessment, and partial failures.
+Canonical JSON sorts unordered maps/ID sets, preserves ordered arrays, and normalizes decimals/instants. Repeating the same normalized input, `asOf`, and constituent versions yields the same fingerprint and domain record.
 
 ## LOG-CMP-001 — Compare immutable snapshots
 
 ```text
-function compare(baseline, improved)
-  assert frozen and distinct snapshots
-  for each ComparableMetricId:
-    if both values complete and units equal: emit deterministic delta
-    else: add ID to unavailableMetricIds
-  changedInputs = stable structural diff excluding derived OriginProof internals
-  changedOutcomes = stable category status/outcome diff
-  tradeoffs = deterministic allowlisted keys from input/value/outcome changes
-  return deepFreeze(bundle)
+function compare(snapshotIds, criterionIds): ComparisonResult
+  require 2..6 distinct valid snapshots
+  validate criterion IDs and compatible units; never coerce unknown units
+  compute exact metric deltas from unrounded values
+  diff normalized scenario paths excluding IDs/timestamps
+  diff category outcome/reasons, coverage, conflicts, and evidence IDs
+  mark version/asOf differences explicitly
+  return immutable comparison; never mutate baseline or rank as best
 ```
 
-No missing/failed value becomes zero. The baseline snapshot is never mutated.
-
-## LOG-RPT-001 — Compose factual deterministic briefs
+## LOG-SITE-001 — Parse, confirm, screen, and order candidates
 
 ```text
-function composeBrief(snapshot, audience)
-  append required overall narrative statement with assessment traces
-  append complete electricity values/formula/version traces or typed failure statement
-  append minimax peak result/certificate/simplification traces or failure statement
-  append water range and assessment OR explicit insufficient/failed statement
-  append resilience/economic/community outcomes and reasons
-  append assumptions grouped by derived origin proofs
-  append unresolved questions and freshness statuses
-  append source statements only for traced evidence
-  append required immutable professional-review disclaimer
-  assert every material factual statement has non-empty valid traces
-  render each statement from deterministic template+typed parameters
-  return deterministic_template ImpactBrief
+function acceptParsedProfile(agentPayload): RequirementProfileDraft
+  schema-check allowed fields/operators/units; cap criteria<=20
+  reject model-added hidden fields, weights, scores, or unknown layers
+  mark every criterion source=parsed_by_ai and state=proposed
+
+function confirmProfile(draft, userEdits): ConfirmedRequirementProfile
+  apply only explicit current-user edits
+  require acknowledgement of every hard constraint and priority order
+  assign revision and confirmedAt; freeze profile
+
+function screen(profile, candidates, evidence): CandidateScreening[]
+  reject unless profile.confirmationState=confirmed
+  for candidate by stable ID:
+    findings = evaluate each criterion deterministically against typed values/evidence
+    if any hard not_satisfied: excluded
+    else if any criterion missingPolicy specialist_review and state missing/partial: specialist_review
+    else if any criterion missingPolicy infrastructure_required and state missing/partial: infrastructure_required
+    else if any required state missing: insufficient_evidence
+    else included
+    record every observed value, evidence ID, and reason
+  if ordering enabled:
+    group by displayed classification order
+    compare displayed ordinal finding at each confirmed priority position
+    stable candidate ID breaks full tie
+  return records plus sensitivity notes from one-criterion-at-a-time perturbations
 ```
 
-Technical view includes formulas, constituent versions, units, thresholds, and reason inputs. Public view simplifies syntax but retains raw values, uncertainty, sources, origins, and accessible equivalents. Familiar comparisons appear only with versioned source-backed factors. Copy serialises the same AST to Markdown/plain text; Clipboard denial exposes selectable content.
+The UI calls this “ordered by your confirmed priorities,” never “best.” Changing a priority produces a reproducible new profile revision and order.
 
-## LOG-AI-001 — Request and apply an optional presentation plan
+## LOG-CONN-001 — Configure, capability-test, persist, and clear a connector
 
 ```text
-async function requestPresentationPlan(snapshot, brief, audience)
-  if disabled: return unchanged brief + disabled status
-  generation = coordinator.incrementGeneration()
-  request = {snapshotId, generation, audience,
-             statements: brief statements with ID/section/role/required and
-                         deterministic allowedConnectives only}
-  response = await POST /api/presentation-plan under timeout and AbortSignal
-  if request aborted/error: return unchanged brief + typed status
-  plan = parseStrictPresentationPlan(response) // schema has no free-text field
-  require coordinator.activeGeneration == generation
-  require current snapshotId/audience == request snapshotId/audience
-  require every required ID exactly once, optional ID at most once,
-          no unknown/duplicate IDs, each connective in its statement's allowlist
-  orderedStatements = lookup original immutable BriefStatement by ID
-  rendered = composeDeterministicConnectives(orderedStatements, plan tokens)
-  assert disclaimer and all required statements present
-  return brief generatedBy deterministic_with_presentation_plan
+function normalizeConnectorDraft(draft): ConnectorConfig
+  parse URL; require HTTPS, no fragment/userinfo, bounded path/header values
+  normalize origin using URL parser, not string prefix
+  reject secret-looking non-secret headers and unsupported methods
+  if key query mode: move complete sensitive URL into vault-only input;
+                     config retains sanitized origin/path template
+  assign new connector ID; never log raw draft
+
+function capabilityTest(config, transientCredential, signal): CapabilityMatrix
+  enforce exact origin and 15s probe deadline
+  probe real CORS with required method/headers
+  test authentication and selected model using minimal bounded request
+  test requested/auto Responses then Chat dialect without assuming either
+  independently test streaming, structured output, function tools,
+                     and remote MCP only when requested/applicable
+  sanitize provider errors to status class/capability reason
+  never persist credential solely because tests pass
+
+function ordinaryUseSucceeded(connectorId, credential, persistenceMode): void
+  update lastSuccessfulUseAt
+  if persistent_device:
+    persist credential in vault transaction after encryption/fallback disclosure
+  else hold only in connector-worker memory
+
+function clearConnector(connectorId): ClearReceipt
+  cancel active requests for connector
+  transactionally tombstone credential and config as selected
+  zero/drop worker references best-effort
+  broadcast sanitized cleared event
 ```
 
-The edge repeats inbound/outbound schema validation, never accepts evidence excerpts or user prompts, and returns no provider prose. Any one invalid field rejects the whole plan. A late response cannot survive the generation guard even if network abort loses a race.
+The vault first probes persistent structured-clone support for a non-extractable AES-GCM CryptoKey. If supported, it encrypts with unique random 96-bit IV and authenticated metadata binding connector ID/schema. If unsupported, default persistence requires the explicit browser-local-not-keychain disclosure and stores through the isolated credential adapter; session-only remains available. Encryption never supports UI read-back and is not claimed to resist same-origin compromise.
 
-## LOG-SAVE-001 — Transactional create/update/delete and crash reconciliation
+## LOG-AGENT-001 — Execute a bounded cited agent request
 
 ```text
-async function mutateScenario(command): PersistenceResult
-  repeat at most twice:
-    attempt = await attemptMutation(command)
-    if attempt is not internal_history_cap: return attempt
-    compacted = await compactPersistenceHistory(command.databaseEpoch)
-    if compacted is conflict/failure: return compacted
-    command = same semantic command with databaseEpoch=compacted.newEpoch
-              and a fresh operationId; recompute its command hash
-  return failure(STORAGE_QUOTA)
+function runAgent(request, signal): AgentResult
+  validate request/schema/limits/generation
+  require connector ready and request disclosure acceptance valid for exact destination,
+          request/generation and context categories
+  context = analysisWorker.projectSelectedContext(request.context IDs)
+  require bytes(context)<=256KiB and fingerprint matches manifest
+  assert context excludes unrelated saved records and all credential fields
 
-async function attemptMutation(command): PersistenceResult | internal_history_cap
-  validate command, label, raw values, SourceSelections, byte/count limits
-  commandHash = sha256(canonical command excluding transient request time)
-  tx = db.transaction([metadata,scenarios,tombstones,operations], readwrite)
-  metadata = await metadata.get("singleton")
-  require command.databaseEpoch == metadata.databaseEpoch else return conflict
-  priorOp = await operations.get(command.operationId)
-  if priorOp exists:
-    require priorOp.databaseEpoch == metadata.databaseEpoch AND
-            priorOp.commandSha256 == commandHash else return conflict
-    await tx.done; return success(reconciled prior outcome)
-  if await operations.count() >= MAX_OPERATION_RECORDS:
-    abort without mutation; return internal_history_cap
-  current = await scenarios.get(command.scenarioId)
-  tomb = await tombstones.get(command.scenarioId)
-  if current/tomb exists with a different databaseEpoch:
-    return conflict // occupied inert identity; create must allocate a fresh UUID
-  if current exists and tomb exists in the current epoch:
-    abort transaction; return STORAGE_CORRUPT
-    // explicit recovery runs a separate atomic quarantine transaction
-
-  if create:
-    require current absent and tomb absent (or explicit new ScenarioId)
-    require count(valid current-epoch active envelopes) < MAX_ACTIVE_SCENARIOS
-            inside this transaction
-    revision=1; put envelope/operation with metadata.databaseEpoch and commandHash
-  if update:
-    require current exists in current epoch, tomb absent,
-            current.revision==expectedRevision
-    revision=current.revision+1; put current-epoch envelope/operation with commandHash
-  if delete:
-    require current exists in current epoch, tomb absent,
-            current.revision==expectedRevision
-    if await tombstones.count() >= MAX_TOMBSTONES:
-      abort without mutation; return internal_history_cap
-    deletedRevision=current.revision+1
-    delete scenario; put current-epoch monotonic tombstone/operation with commandHash
-  await tx.done
-  return success
-catch transaction abort/quota:
-  return failure with no partial commit
-catch response lost after possible commit:
-  return failure(STORAGE_COMMIT_INDETERMINATE, retrySameOperationId=true)
-
-async function compactPersistenceHistory(expectedEpoch): CompactionResult
-  tx = db.transaction([metadata,scenarios,tombstones,operations], readwrite)
-  metadata = await metadata.get("singleton")
-  if metadata.databaseEpoch != expectedEpoch:
-    abort; return conflict(currentEpoch=metadata.databaseEpoch)
-  if any valid current-epoch scenario and tombstone share a ScenarioId:
-    abort; return failure(STORAGE_CORRUPT)
-  newEpoch = randomUuid()
-  for each valid active envelope where envelope.databaseEpoch == expectedEpoch:
-    rewrite only envelope.databaseEpoch = newEpoch; preserve ID/revision/content/times
-  // invalid or older-epoch entries remain inert for explicit quarantine maintenance
-  clear operations
-  clear tombstones
-  put metadata with databaseEpoch=newEpoch
-  await tx.done
-  return success(newEpoch)
+  messages = trusted instructions + deterministic context + user prompt
+  toolBudget=6; attempts=0; citationsByUrl={}; claims=[]
+  while attempts<2 and wallTime<120s:
+    response = direct model call through selected tested dialect; no-store; cancellable
+    for each streamed event: validate size/type/generation before exposing safe progress
+    if response requests tools:
+      for call in at most 2 concurrent calls:
+        require toolBudget>0, allowlisted read-only operation, schema-valid bounded args
+        reject source/prompt requests to add/discover/write/communicate/purchase
+        result = direct CORS adapter or provider-side remote MCP route
+        sanitize, cap, type and capture source URLs/retrieval time
+        append as external untrusted tool data; toolBudget--
+      continue model loop
+    candidate = parse mode-specific structured output
+    validation = validate claims/citations/structured payload against tool/context records
+    if valid: return complete or partial with typed citations
+    if retryable format/citation repair and attempts==0: attempts++; request correction
+    else return partial/failed
+  return timeout/cancel/limit typed outcome
 ```
 
-Within an epoch, the operation record proves whether an atomic commit occurred. After compaction, any retry carrying the old epoch conflicts rather than duplicating a mutation; the caller refreshes and reconciles from the preserved active state. Same-record revision conflicts return the current/tombstone revision and never overwrite. Different record IDs can commit independently in concurrent tabs. IndexedDB transaction serialization plus epoch/revision checks are the consistency mechanism; `BroadcastChannel` merely refreshes lists.
+Citation validation requires every external factual claim to cite a URL/evidence ID present in context/tool results; source statements, inference, uncertainty, conflict, and unsupported are distinct. A late stream event is discarded. Chat-only endpoints can explain provided deterministic context but research/visual/site functions are disabled when their capabilities are absent.
+
+## LOG-VIS-001 — Resolve and render an AI visual safely
 
 ```text
-async function restoreScenario(id)
-  metadata = read and validate singleton StoreMetadata
-  envelope = parse current record; if invalid quarantineRecordAtomically(id)
-  require envelope.databaseEpoch == metadata.databaseEpoch else treat as inert maintenance record
-  if tombstone revision >= envelope revision: reject resurrection and quarantine envelope
-  migrated = runSequentialIdempotentMigrations(envelope) or quarantine individually
-  draft = {raw:migrated.rawScenario, sourceSelections:migrated.sourceSelections}
-  activate current canonical region bundle
-  analysis = analyse(draft, current deployment/bundle) // re-derives origins
-  notices = compare every savedManifest field with current manifest
-  return restored(draft, analysis, notices)
+function resolveVisual(specBytes, request, dataRegistry): VisualOutcome
+  require bytes<=128KiB and strict schema with no unknown fields
+  reject any HTML/script/style/expression/event/arbitrary URL/raw data property
+  require primitive and every dataset/field/filter/evidence ID exist and are authorized
+  estimate resolved rows/points/series/annotations before materializing; enforce limits
+  apply only allowlisted filter/group/sort/aggregate operations in analysis worker
+  create trusted scalar arrays, table, source IDs, provenance and deterministic summary IDs
+  validate resolved model again at main-thread boundary
+  render via trusted component; always render equivalent table/text
 ```
 
-### Legacy v1 import
+Map overlays are bounded view models passed to CMP-MAP-01; the model never emits MapLibre style expressions or tile URLs. Invalid specs display reason and the trusted raw table/default visual.
 
-After IndexedDB v2 opens, create or validate singleton metadata and its database epoch. If `metadata.legacyV1ImportComplete` is false, read the single legacy key once. Each record is independently parsed and imported under the current epoch in its own idempotent operation; valid records begin at revision 1, unresolved origins become user assumptions, and invalid records enter `quarantine` with raw hash. After readback audit, set the completion marker transactionally. Remove the legacy key only after the marker and successful audit; an interruption before that point safely retries by deterministic current-epoch legacy operation IDs.
-
-## LOG-UI-001 — Accessible rendering and workflow rules
-
-- Map, coordinates, pointer, keyboard, and list share one canonical region-selection model; the list remains available when map data fails only if the index is independently valid.
-- Form labels, explanations, origin badges, warnings, and errors are programmatically associated. User edits immediately show `User assumption`.
-- Validation failure focuses an error summary linking to the first field while preserving values.
-- Outcomes use text/icon/shape as well as colour; evidence freshness is explicit text.
-- Every chart has an adjacent summary and 24-row data table from the identical `HourPoint` tuple.
-- Polite debounced announcements cover recalculation; user-triggered blocking errors are assertive.
-- Reduced motion, keyboard-only operation, high contrast, and 200% zoom retain the complete journey.
-- Draft changes label prior results stale; stale results never masquerade as current.
-- Partial failures retain unaffected cards and state exactly what is incomplete/failed.
-
-## LOG-OBS-001 — Privacy-preserving diagnostics
+## LOG-RPT-001 — Compose and copy the impact brief
 
 ```text
-function emitDiagnostic(candidate)
-  event = strictAllowlistParse(candidate)
-  if candidate contains forbidden field/value class:
-    drop event; increment in-memory safe counter only
-  development sink may log validated event
-  production browser/edge sinks receive validated event without bodies/content
+function composeBrief(snapshotOrComparison, audience, lens, aiAppendix?): ImpactBriefV2
+  select trusted statement IDs required for overview, calculations, assessments,
+         evidence, assumptions, conflicts, coverage, missing questions, limitations
+  for ResultSnapshotV2 require its OverallAssessmentV2 statement, five category
+    StatementIds, reasonIds and decisive-input references to resolve exactly
+  bind exact values/units/outcomes/source labels through deterministic templates
+  include mandatory indicative-use/professional-review disclaimer
+  include AI appendix only when claim/citation records validate and label it AI-generated
+  build Markdown/text from trusted nodes; never concatenate provider HTML
+  verify all referenced statements/evidence resolve and required sections nonempty
+  return brief
+
+function copyBrief(brief): ImpactBriefCopyOutcomeV2
+  attempt Clipboard API with plain text/Markdown only
+  if denied/unavailable: expose same content in selectable focused region with guidance
 ```
 
-Correlation IDs last for one operation and are not stored as user identifiers. Presentation requests use a separate generation ID.
+## LOG-SAVE-001 — Transactional storage, concurrency, migration, and quarantine
 
-## Security boundaries and resource limits
+```text
+function mutate(operation): StorageOutcome
+  validate operation before transaction
+  begin readwrite transaction on target store + receipts
+  if receipt exists for operationId: return replayed receipt/result
+  current = get record/tombstone
+  apply create/replace/delete guards and expected revision
+  on conflict: write no record; return conflict
+  next = canonical envelope with revision/current timestamps/checksum
+  write next and immutable operation receipt in same transaction
+  commit; broadcast only storeKind/recordId/revision/operationId
+  if completion ambiguous: caller retries same operationId
 
-| Boundary | Controls | Limit and recovery |
-|---|---|---|
-| Form/source selection | strict parsing; hard ranges; resolve preset/evidence/fact and exact value | field issue; preserve draft; untrusted labels become assumptions/errors |
-| Manifest/geometry/bundle | same-origin; byte hash; schema; semantic/cross-version/reference checks | manifest 256 KiB, geometry 2 MiB/250k vertices, bundle 1 MiB/300 evidence; isolate scope |
-| Geometry | finite coordinates, closed/non-self-intersecting rings, deterministic boundary rule | disable map/coordinate path; never guess nearest |
-| Evidence | inert text, HTTPS URL, pinned freshness, release link check | 1,000 chars/item; stale/unknown contextual only |
-| Calculation/simulation | decimal canonicalisation, fixed 24 hours, 80 feasibility iterations, independent invariant verifier | typed metric/simulation failure; retain unrelated results |
-| IndexedDB | per-record transactions, epoch + revision CAS, operation idempotency, tombstones, atomic epoch compaction, schema/migration checks | 20 active/64 KiB each; rotate epoch at 2,000 operations or 1,000 tombstones; 100 quarantine with explicit maintenance; memory path continues |
-| Presentation client/gateway | fixed endpoint, JSON schema without factual response fields, 64 KiB, 50 statements, 8s timeout/cancel | discard whole plan; deterministic fallback |
-| Clipboard | plain text/Markdown only | manual selection fallback |
-| Diagnostics | strict allowlist and forbidden-field guard | drop unsafe event |
+function restoreAll(store): RestoreOutcome
+  open supported IndexedDB version using versionchange protocol
+  for each record independently:
+    verify envelope/checksum/schema/store kind
+    run sequential pure migrations in one transaction
+    validate post-migration trusted references against active release
+    if invalid: transactionally copy sanitized metadata to quarantine and exclude original
+  report restored/quarantined/version-drift counts without content
+```
 
-CSP target: same-origin scripts/styles/assets; no `unsafe-eval`; browser does not connect to AI provider; object/frame sources denied; base URI self; form action self; only the server adapter may reach the allowlisted HTTPS provider.
+Same-record conflict is surfaced; independent record writes coexist. Clear-one-store enumerates exact count in a transaction and writes a clear receipt. Clear-all requires explicit confirmation, runs stores in a declared order, and reports partial failure without claiming complete removal. Credential clear uses the vault adapter and never exposes values.
 
-## Crash, update, migration, and rollback
+## LOG-OFF-001 — Cache, update, rollback, and removal
 
-- A tab crash loses only unsaved in-memory draft/results; a committed IndexedDB mutation is recoverable by operation ID within its epoch, while an old-epoch retry after compaction conflicts and reconciles from current active state.
-- Code/data deployment is atomic and content-hashed; one release never mixes manifest/bundle versions.
-- No service worker is required, avoiding mixed stale caches.
-- Host rollback restores a complete prior deployment. Current saved records restore with explicit full-version drift.
-- IndexedDB upgrades are sequential, transactional, idempotent, and quarantine per record; no migration silently deletes the source on failure.
-- Provider outage requires no rollback because deterministic briefs remain authoritative and complete.
+```text
+serviceWorker.install(candidateRelease):
+  create generation-specific temporary cache
+  fetch/hash/store declared shell+core assets only
+  if any fail: delete temporary cache; keep current worker/cache
+  mark generation validated; do not skipWaiting over active result
+
+shell.onUpdateReady:
+  show release/data version and reload action
+  on explicit reload: allow waiting worker activation; new boot validates generation
+
+serviceWorker.fetch(request):
+  if request is model/MCP/live, cross-origin, authorization-bearing, or no-store:
+    bypass cache unchanged
+  if immutable same-origin declared asset: serve exact active generation/cache
+  otherwise use normal network without inventing cache entry
+
+cleanup:
+  delete retired cache only when no controlled client declares it active
+```
+
+Rollback republishes/reactivates a prior complete immutable Sites release. Unpublish does not clear IndexedDB/cache; the product exposes local clear instructions before removal.
+
+## LOG-PIPE-001 — Compile registered public data safely
+
+```text
+function compileRelease(sourceRegistry, pinnedAsOf): CompilerOutcome
+  validate every enabled source licence/purpose/access/adapter/schema contract
+  fetch with bounded concurrency, rate policy and retries; never use undocumented report DOM
+  store raw receipt: URL, retrieval, ETag/last-modified, bytes, SHA-256, coverage
+  parse into typed staging rows; reject schema drift or incompatible units
+  transform with versioned deterministic adapters and exclusion ledgers
+  build geometry/catalog/region/electricity/policy/project/document packs
+  validate IDs, edges, page locators, source links, coverage, attribution, sizes and dependencies
+  produce one strict DataPackManifestV2 per pack with exact asset hashes,
+    dependencies and source/licence/attribution/purpose/coverage bindings;
+    bind all manifests into ReleaseManifestV2 and release reports
+  run golden/domain/data contract tests against candidate packs
+  publish nothing if core validation or required demo acceptance fails
+```
+
+No user connector credential or local `TEST.md` value is read by this pipeline. Raw bulk files and unlicensed document bodies stay outside `public/`.
+
+## LOG-EMI-001 — Select, join, transform, and aggregate EMI data
+
+```text
+function selectRollingWindow(blobListing, cutoffLocalDate): Window
+  for endExclusive from latest complete local day +1 descending:
+    startInclusive = endExclusive minus 12 calendar months
+    expectedDates = every Pacific/Auckland local date in [start,end)
+    if exactly one accepted daily dispatch file exists for every date:
+      return window and chosen source revisions
+  fail if no window meets declared search horizon
+
+function compileEmi(window, nspSnapshot, statsGeometry): EmiOutput
+  validate raw file schemas/receipts and one declared compatible NSP snapshot
+  nspByPoc = unique exact normalized POC mapping; ambiguous codes excluded
+  for each dispatch row in deterministic file/instant/POC/unit order:
+    exclude dead/disconnected/invalid value or unit
+    resolve documented run/revision precedence; ambiguous duplicates excluded
+    nsp = exact nspByPoc[row.POC] else unmatched exclusion
+    require valid EPSG:2193 coordinate; transform with pinned transform version
+    geography = pointInPolygon using LOG-GEO-001 rule else exclusion
+    preserve NSP network region/zone as separate fields
+    normalize UTC instant and derive Pacific/Auckland local day/offset
+    accumulate interval load/generation/price context by geography with exact units
+
+  for each local day and source interval length:
+    expected = timezone-derived day minutes / intervalMinutes
+    // examples: 46/48/50 half-hour; 276/288/300 five-minute
+    record observed/expected and short/ordinary/long/irregular class
+  compute coverage and exclusion ledger; reject below Gate-3 quality thresholds
+  emit compact intervals/summary/evidence/receipt packs with prohibition flags:
+       no_spare_capacity, no_self_sufficiency, no_transmission_headroom
+```
+
+For price aggregation, the pack labels the exact statistic (for example load-weighted mean only when denominator is valid); no unlabeled averaging occurs. MW values are instantaneous/interval-average power. Any energy derivative is `MW × intervalHours`, never a raw MW sum.
+
+## LOG-DOC-001 — Prepare the deep Project Case File
+
+```text
+function compileProjectDocuments(registeredDocuments, project): ProjectCasePack
+  require public/licensed source, stable URL, receipt, content hash and media type
+  extract text/page boundaries with versioned deterministic tool
+  retain document/page/section locator for every extracted candidate statement
+  classify statement as proposal claim/official document/etc from source registry,
+           never from the statement’s self-description
+  run deterministic/entity/date/unit parsers; AI may propose candidates offline only
+  require curator/release validation before candidate edge becomes accepted
+  build timeline; retain conflicting dates as separate events + conflict record
+  build community records using controlled stance/theme/stakeholder/quality taxonomy
+  keep mana whenua distinct and record missing voices/method limits
+  require every fixed Case File section, inserting explicit missing state/questions
+  emit strict ProjectCatalogRecordV2, EvidenceGraphSnapshotV2, CommunityRecordV2 and
+    ProjectCaseV2 assets under DataPackManifestV2 plus extraction coverage report
+```
+
+Document instructions are ignored as content. The prepared release must open sources/page locators or provide a documented fallback. Runtime user uploads remain unimplemented.
+
+## LOG-UI-001 — Trusted accessible presentation
+
+- Every map selection/action has a keyboard-operable list equivalent sharing IDs and state.
+- Marker status, coverage, concern, staleness, and selection never rely on colour alone.
+- Charts always expose a table and deterministic text summary with the same units/source IDs.
+- Focus moves predictably to sheets/dialogs/errors; Escape/close restores the invoking control.
+- Live worker/model progress uses polite status regions; critical validation uses associated field messages, not toasts alone.
+- 200–400% zoom reflows without two-dimensional scrolling except intrinsically tabular/map regions with alternatives.
+- Reduced-motion preference disables nonessential animation. Touch targets and drag alternatives meet the approved accessibility target.
+- Audience/lens switches select different trusted statement/layout views only; a development invariant compares underlying IDs before/after.
+
+## LOG-OBS-001 — Emit privacy-preserving diagnostics
+
+```text
+function diagnostic(candidate): void
+  construct new DiagnosticEventV2 from explicit allowlisted enums/scalars only
+  never spread error/provider/request/source objects
+  bucket durations; cap counts; validate strict schema with no unknown fields
+  scan serialized event for seeded-secret canaries during tests
+  append to bounded in-memory ring (max 500); no telemetry or persistence in core
+```
+
+Provider messages are mapped to safe status classes. Local export contains only validated events and release/version summary.
+
+## Concurrency, cancellation, and backpressure
+
+- Coordinator owns one monotonic generation per mutable UI slot: map query, analysis, case load, agent request, visual, connector test, update.
+- Worker tasks include operation ID, generation, deadline, and cancellation token. Progress is throttled to at most 10 events/second/operation.
+- Analysis worker serializes pack activation and IndexedDB migration; pure calculations may run after active indexes are stable.
+- Connector worker permits one active model stream per conversation/request slot, two concurrent research calls, and six total tool calls. Replacing a slot dispatches an exact targeted cancel command; independent tasks remain untouched.
+- Pack loader permits four network fetches and one CPU index build. Map viewport requests coalesce to the newest pending viewport.
+- Storage transactions are short and contain no network/worker wait. BroadcastChannel signals invalidation only; receivers reread/validate authoritative IndexedDB state.
+- Shutdown cancels network work, lets active storage transaction settle, and never writes half a stream/result.
+
+## Security boundaries and forbidden states
+
+1. Main thread cannot call arbitrary connectors directly; production imports expose only the typed connector-worker client.
+2. Analysis worker has no vault/network adapter and rejects credential-like fields at its message schema.
+3. Connector worker cannot open result/storage stores other than its config/vault/research-cache adapters.
+4. UI rendering uses text nodes/trusted component props; no `dangerouslySetInnerHTML`, script URL, model CSS, eval, Function, or dynamic code import from external content.
+5. URL parser accepts safe HTTPS citation/source URLs; credentials/userinfo/fragments and unsafe protocols are rejected. Key-query MCP configuration is vault-only.
+6. CSP self-hosts scripts/workers and denies inline/eval/object/frame/base violations. Broad custom HTTPS connection permission is compensated by the exact connector registry and no third-party runtime scripts.
+7. Package scan rejects `TEST.md`, `.env*`, exact secret canaries, raw source credentials, absolute developer paths, source maps unless intentionally approved, and unexpected executables.
+8. Forbidden domain outputs include overall score, approved/rejected consent, objective best site, household bill prediction, representative web sentiment, capacity/headroom from proximity/generation, and low concern from missing evidence.
+
+## Resource ceilings
+
+| Resource | Version-1 limit | Failure behavior |
+|---|---:|---|
+| Core compressed app + data assets | 12 MiB target, 20 MiB hard | Release build fails over hard limit. |
+| Optional pack | 8 MiB compressed, 32 MiB parsed | Pack disabled/compile fails. |
+| National map rendered features | 20,000 after filtering; 5,000 generated points | Cluster/summarize or reject visual. |
+| Evidence graph per case | 5,000 records, 10,000 edges | Compiler fails deep case pack. |
+| Graph query | 50 seeds, depth 2, 1,000 records | Return bounded partial with limit reason. |
+| Scenario comparison | 2–6 snapshots | Validation failure. |
+| Site criteria/candidates | 20 criteria, 500 prepared candidates | Validation/partial, never silent truncation. |
+| Agent context/response | 256 KiB / 1 MiB | Reject/partial. |
+| Agent execution | 120 s, 2 model attempts, 6 tools, 2 concurrent | Cancel/partial/limit. |
+| Visual | 128 KiB spec, 8 series, 2,000 rows, 5,000 points | Fail closed to trusted table/default. |
+| Diagnostics | 500 events, 7-day optional retention | Oldest-first deletion. |
+| Flexibility | exactly 24 slots, 80 search iterations | Typed failure; no approximate fallback. |
+
+## Worked boundary examples
+
+### Freshness
+
+For evidence basis `2024-08-06T00:00:00Z`, a 24-month category is current at `2026-08-06T00:00:00Z` and stale one instant later. An explicit `validUntil=2026-09-01T00:00:00Z` makes it current through that inclusive instant. Missing basis is unknown. Basis after `asOf` is future-invalid unless a typed forecast interval covers the instant.
+
+### Overall assessment
+
+`[low, low, moderate, low, low]` → potentially suitable with conditions. Any high wins even when another category is insufficient. Without high, any insufficient/failed → evidence incomplete. All low still produces lower-concern professional-review-required wording, never approval.
+
+### Site screening
+
+A confirmed hard criterion “outside authoritative flood exclusion” fails → excluded. If the flood layer is missing and its configured missing policy is specialist review → specialist review, not included. A fibre preference with approximate data can affect the visible lexicographic vector only as partial/unknown and cannot become a hard capacity fact.
 
 ## Requirement-to-logic traceability
 
-| Requirement IDs | Logic units and invariants |
+| Requirements | Logic units/invariants |
 |---|---|
-| FR-LOC-001, FR-LOC-002 | LOG-BOOT-001, LOG-GEO-001, LOG-DATA-001, LOG-UI-001, INV-002 |
-| FR-SCN-001, FR-SCN-002, FR-SCN-003 | LOG-VAL-001, LOG-UI-001, INV-005 |
-| FR-CAL-001, FR-CAL-004, FR-CAL-005, FR-CAL-006 | LOG-CAL-001, LOG-SNAP-001, INV-003, INV-005 |
-| FR-CAL-002, FR-CAL-003, FR-CAL-007 | LOG-FLX-001, INV-006 |
-| FR-EVD-001, FR-EVD-002, FR-EVD-003, FR-EVD-004 | LOG-DATA-001, LOG-EVD-001, LOG-ASM-002, INV-003, INV-007 |
-| FR-CRT-001 | LOG-ASM-001 |
-| FR-ASM-001, FR-ASM-002, FR-ASM-003, FR-ASM-004, FR-ASM-005, FR-ASM-006, FR-ASM-007, FR-ASM-008 | LOG-ASM-001, LOG-ASM-002, INV-007, INV-008 |
-| FR-CMP-001 | LOG-SNAP-001, LOG-CMP-001 |
-| FR-RES-001, FR-RES-002, FR-RES-003 | application states, LOG-UI-001, LOG-RPT-001 |
-| FR-RPT-001, FR-RPT-002, FR-RPT-003 | LOG-RPT-001, LOG-AI-001, INV-004, INV-011 |
-| FR-ERR-001 | Typed failure paths throughout, LOG-RPT-001, LOG-AI-001 |
-| FR-DAT-001, FR-DAT-002 | LOG-BOOT-001, LOG-GEO-001, LOG-DATA-001, LOG-SNAP-001 |
-| FR-LOCALSAVE-001, FR-LOCALSAVE-002 | LOG-SAVE-001, INV-009, INV-010 |
-| NFR-PER-001, NFR-PER-002 | Bounded local algorithms, post-render LOG-AI-001, resource limits |
-| NFR-REL-001, NFR-REL-002 | INV-003/005/006/010, LOG-SNAP-001, typed partial states |
-| NFR-ACC-001 | LOG-UI-001 |
-| NFR-SEC-001, NFR-SEC-002 | All parsers, trust derivation, security table, INV-001/011/012 |
-| NFR-PRI-001 | LOG-SAVE-001, LOG-AI-001 minimisation, INV-009/012 |
-| NFR-EXP-001 | INV-003/004/007, LOG-EVD-001, LOG-RPT-001 |
-| NFR-MNT-001, NFR-MNT-002 | Contract-separated units and LOG-AI-001 plan-only boundary |
-| NFR-DEP-001 | Deployment/crash/rollback model and CSP |
-| NFR-OBS-001 | LOG-OBS-001, INV-012 |
-| CON-001, CON-002, CON-003, CON-004, CON-005, CON-006, CON-007 | INV-001/008/013 and deployment/security boundaries |
+| FR-LOC-001–004 | LOG-BOOT-001, LOG-GEO-001, LOG-MAP-001, INV-009–010 |
+| FR-MAP-001–004 | LOG-MAP-001, LOG-CASE-001, LOG-UI-001 |
+| FR-SCN-001–004 | LOG-VAL-001, LOG-SAVE-001, LOG-CMP-001 |
+| FR-CASE-001–004 | LOG-CASE-001, LOG-EVD-002, LOG-DOC-001 |
+| FR-CAL-001–006 | LOG-CAL-001, LOG-FLX-001, LOG-SNAP-001, INV-014–015, INV-020 |
+| FR-ASM-001–008 | LOG-ASM-001, LOG-SNAP-001, INV-017–019 |
+| FR-EVD-001–012 | LOG-PACK-001, LOG-EVD-001–002, LOG-PIPE-001, LOG-OFF-001 |
+| FR-EVD-013–015 | LOG-EMI-001, INV-025 |
+| FR-EVD-016–018 | LOG-EVD-002, LOG-CASE-001, LOG-DOC-001, INV-013/019 |
+| FR-AGT-001–008, FR-AGT-011 | LOG-CONN-001, LOG-AGENT-001, LOG-CASE-001, LOG-UI-001 |
+| FR-AGT-009–010 | LOG-SITE-001, INV-016 |
+| FR-VIZ-001–003 | LOG-VIS-001, LOG-UI-001, INV-008 |
+| FR-CONN-001–008 | LOG-CONN-001, LOG-AGENT-001, LOG-SAVE-001, INV-005–007 |
+| FR-RES-001–004 | LOG-MAP-001, LOG-CASE-001, LOG-SNAP-001, LOG-UI-001 |
+| FR-RPT-001–003 | LOG-RPT-001, INV-002/026 |
+| FR-SAVE-001–002 | LOG-SAVE-001, LOG-CONN-001, INV-021–022 |
+| FR-DOC-001–002 | LOG-DOC-001, INV-027 |
+| NFR-PER-001 | LOG-PACK-001, LOG-FLX-001, concurrency/backpressure, resource ceilings |
+| NFR-REL-001–002 | LOG-SNAP-001, typed state machines/failures, INV-003–004/020/028 |
+| NFR-ACC-001 | LOG-UI-001, LOG-MAP-001, LOG-VIS-001 |
+| NFR-SEC-001–002 | Security boundaries, LOG-CONN-001, LOG-AGENT-001, LOG-VIS-001, INV-005–008 |
+| NFR-PRI-001 | LOG-CONN-001, LOG-SAVE-001, LOG-OBS-001 |
+| NFR-EXP-001 | LOG-VAL-001, LOG-EVD-001–002, LOG-ASM-001, LOG-RPT-001 |
+| NFR-MNT-001–002 | Every versioned LOG/CTR boundary and state machine |
+| NFR-DEP-001 | LOG-BOOT-001, LOG-OFF-001, LOG-PIPE-001 |
+| NFR-OBS-001 | LOG-OBS-001, INV-024 |
+| CON-001–008 | Security/forbidden boundaries, INV-001–028, LOG-PIPE/CONN/OFF |
 
 ## Acceptance-criterion-to-logic traceability
 
-| Acceptance criterion | Logic proof obligation |
+| Acceptance criteria | Logic evidence |
 |---|---|
-| AC-001 | LOG-BOOT-001, LOG-GEO-001, LOG-DATA-001, and LOG-UI-001 enforce prepared/unsupported behavior. |
-| AC-002 | LOG-VAL-001 and LOG-UI-001 cover fields, trusted origins, explanations, and validation. |
-| AC-003 | LOG-CAL-001 proves the 65 MW and 455.52 GWh Southland oracle. |
-| AC-004 | LOG-CAL-001 exposes typical/boundary/invalid/conversion/rounding seams. |
-| AC-005 | LOG-FLX-001 and LOG-UI-001 produce accessible 24-hour baseline/flexible views. |
-| AC-006 | INV-006 and LOG-FLX-001 prove flexibility, energy, utilization, and peak bounds. |
-| AC-007 | LOG-DATA-001 and LOG-EVD-001 require source-backed quality/freshness evidence. |
-| AC-008 | INV-003/004 and LOG-RPT-001 expose origin/formula/evidence traces. |
-| AC-009 | LOG-ASM-001/002 produce predefined questions without rejection logic. |
-| AC-010 | LOG-RPT-001 is complete without LOG-AI-001 and includes the disclaimer. |
-| AC-011 | Typed partial flows and LOG-AI-001 preserve deterministic results. |
-| AC-012 | LOG-SNAP-001 and LOG-CMP-001 provide immutable deltas/trade-offs. |
-| AC-013 | Module boundaries, limits, and lifecycle seams are exercised by `07-test-strategy.md`. |
-| AC-014 | INV-001/005/008/011/012 and security controls exclude forbidden output. |
-| AC-015 | LOG-UI-001 and LOG-RPT-001 retain raw values, sources, confidence, and equivalents. |
-| AC-016 | LOG-ASM-002 covers exact five-category and overall-precedence branches. |
-| AC-017 | LOG-EVD-001 proves pinned dates, exact boundaries, `validUntil`, and low-concern exclusion. |
-| AC-018 | LOG-FLX-001 proves minimax feasibility/optimality and the 100/50/50→125 oracle. |
-| AC-019 | LOG-VAL-001 and LOG-AI-001 reject forged origin and malicious/late plans. |
-| AC-020 | LOG-GEO-001 proves three-region selection parity and exact-border behavior. |
-| AC-021 | LOG-SAVE-001 proves concurrency, crash reconciliation, migration, drift, and quarantine. |
-| AC-022 | INV-003 and LOG-SNAP-001 attach the full manifest to every result status. |
+| AC-001–002 | LOG-GEO-001/MAP-001 plus per-category LOG-EVD-001 coverage and all-region analysis. |
+| AC-003–004 | LOG-CAL-001 exact Southland values and LOG-FLX-001/property oracles. |
+| AC-005–006 | LOG-ASM-001, LOG-SNAP-001, manifest/trace and accessible presentation invariants. |
+| AC-007–009 | LOG-PIPE/PACK/EVD/OFF source, conflict, freshness and failure paths. |
+| AC-010–012 | LOG-CONN-001 persistent vault/CORS/no-relay state machine. |
+| AC-013–015 | LOG-AGENT-001 and LOG-VIS-001 bounded citation/security/cancellation behavior. |
+| AC-016–019 | LOG-CASE/EVD/ASM/CMP/RPT and presentation-only audience/lens invariants. |
+| AC-020–021 | LOG-SAVE/OFF/OBS/UI plus clean build/hosted checks in test strategy. |
+| AC-022 | LOG-EMI-001 exact window/join/transform/DST/unit/exclusion logic. |
+| AC-023–024 | LOG-MAP-001, LOG-CASE-001, LOG-DOC-001 and offline core packs. |
+| AC-025 | LOG-EVD-002/ASM-001 and INV-019 controlled community model. |
+| AC-026 | LOG-SITE-001 confirmed profile, classification precedence, visible order and sensitivity. |
+
+## Normative v0.10 logic reconciliation
+
+The routines below replace the same-named v0.4/v0.5/v0.6/v0.7/v0.8/v0.9 routines and every old producer of a superseded CTR-022 root, including old LOG-CASE/ASM/SNAP/SITE/AGENT/VIS payload production. All arithmetic is exact `RationalDecimal` until an explicit display formatter. The approved v1 policies are Balanced EMI quality and separate site-presentation groups that retain the five site-domain outcomes.
+
+### LOG-FLX-001A - exact continuous minimax
+
+```text
+function buildFlexibilityInputV1(scenario, calculation, profile, policy): FlexibilityInputV1
+  require calculation/scenario/profile hashes and exactly 24 one-hour slots
+  B[h] = calculation.facilityDemandMw * scenario.utilisationRatio
+  C[h] = profile.regionalDemandMw[h] + B[h]
+  P0 = max(C)
+  maxFlexibleMw = calculation.facilityDemandMw * scenario.flexibleWorkloadRatio
+  sourceHours = first policy.peakHourCount indices sorted by
+    (profile.regionalDemandMw descending, hour index ascending)
+  sourceLimit[h] = min(maxFlexibleMw,B[h]) * duration[h] if h in sourceHours else 0
+  destinationLimit[h] = 0 if h in sourceHours else max(0,min(
+    calculation.facilityDemandMw*policy.maximumDestinationUtilisationRatio-B[h],
+    P0-C[h])) * duration[h]
+  allowed[s][d] = (s in sourceHours and d not in sourceHours)
+  return strict FlexibilityInputV1 with maximumMovableEnergyMwh=sum(sourceLimit)
+    and FlexibilityProducerTrace over every source value/version/hash
+
+function solveFlexibilityV1(input): FlexibilityResultV2
+  require length of all slot vectors = 24 and every duration == exactly 1
+  require every input MW <= 1_000_000, every combined MW <= 2_000_000
+  require canonical decimals, exact producer trace recomputation, diagonal transfers false
+  combined[h] = regionalDemandMw[h] + facilityBaselineMw[h]
+  sourceCap[h] = min(sourceLimitsMwh[h], facilityBaselineMw[h]*duration[h])
+
+  if sum(sourceCap) == 0:
+    P0 = max(combined)
+    return complete identity profiles, zero ledger/shift/improvement,
+      exact primal=dual=P0 certificate and zero residuals
+
+  // Primary exact rational LP with optional continuous transfers.
+  primary = solveRationalPrimalAndDual(
+    minimize P,
+    0 <= transfer[s,d],
+    transfer[s,d] == 0 when not allowedTransfer[s,d],
+    sum_d transfer[s,d] <= sourceCap[s],
+    sum_s transfer[s,d] <= destinationLimitsMwh[d],
+    shiftedFacility[h] = facilityBaseline[h]
+      - sum_d transfer[h,d]/duration[h]
+      + sum_s transfer[s,h]/duration[h],
+    shiftedFacility[h] >= 0,
+    regionalDemand[h] + shiftedFacility[h] <= P for every h)
+  require primary status exact_optimal
+  require exact primary.primalObjective == primary.dualObjective
+  Pstar = primary.primalObjective
+
+  secondary = solve exact LP holding P=Pstar and maximising sum(transfer)
+  shiftedEnergy = secondary.maximum
+  ledger = solve exact LP holding P=Pstar and sum(transfer)=shiftedEnergy,
+    lexicographically minimise transfer[0,0]..transfer[23,23]
+
+  recompute shifted facility/combined arrays from ledger
+  require exact source/destination/nonnegative/conservation/allowed-edge constraints
+  require max(shiftedCombined) == Pstar
+  require primal and dual constraint hashes revalidate independently
+
+  auditLow = exact primary.dualObjective
+  auditHigh = exact primary.primalObjective
+  auditIterations = ceil(log2(2_000_000/0.000001)) == 41 maximum
+  return complete with identity-or-ledger profiles, shiftedEnergy, improvement,
+    active constraints and zero-gap exact primal/dual certificate
+```
+
+The independent oracle is a separate continuous rational LP implementation with no shared production pivot, constraint builder or dual code. It enumerates LP vertices for small property cases and uses an independently sourced exact simplex for larger fixtures. It never discretizes MWh. The cap-limited fixture `[100,99,0 x22]`, facility `50 MW`, two source slots and twenty-two `1 MWh` destination caps must return exact `138.5 MW`; a result below `138.5` is impossible. A dedicated mutation fixture makes a low source export while a high source remains above a false target; only the exact primary/dual certificate passes.
+
+### LOG-EVD-001A - compile typed facts and freeze authority
+
+```text
+function compileEvidence(sourceRecord, adapter, registry, authorityRules, asOf): CompiledEvidence
+  validate source bytes, adapter schema/version, registry entry and licence
+  evidence = adapter.toEvidenceRecordV2(sourceRecord)
+  require strict PageLocatorV2 when documentId/pageOrSection is present; reject `{}`,
+    mixed variants and every legacy PageLocator before content hashing
+  candidateFacts = adapter.toTypedFacts(sourceRecord)
+  for fact in candidateFacts:
+    require fact.evidenceId == evidence.evidenceId
+    require typed value/unit/definition/basis/role/scope
+    if forecast exists:
+      require issuedAt <= validFrom <= validUntilInclusive
+      forecast_valid iff validFrom <= asOf <= validUntilInclusive
+      forecast_expired iff asOf > validUntilInclusive
+    basis after asOf without a covering forecast => future_invalid
+    absent usable observation/publication and forecast => unknown
+    require authority rule explicitly includes the resulting temporal state
+    require every derivation input exists and graph is acyclic
+    applicable = authorityRules.filter(exact match on sourceType, factKind, field,
+      scope.kind, intendedPurpose, temporalState, derivation.kind)
+    if applicable.count != 1: fail compiler
+    if impossibleAuthority(sourceType, fact.basis, applicable[0].resultingAuthority): fail compiler
+    bind fact to applicable rule ID/version and resulting authority
+  return compiled evidence and facts
+
+function freezeEvidenceSnapshot(selection, asOf): EvidenceSnapshot
+  resolve every selected evidence/fact/statement/question/missing-voice/company/
+    company-claim/edge/community record byte-for-byte
+  evaluate freshness using pinned asOf and policy version
+  compute coverage/conflicts/failed-source ledger deterministically
+  include source, adapter, policy and pack versions
+  inline the complete essential V2 closure and exact ID/content-hash projections
+  canonicalize, hash remainder, set evidenceSnapshotId to hash
+  reparse and rehash before returning immutable snapshot
+```
+
+National scope is a first-class scope; it is never encoded as an empty geography list. Forecast validity is inclusive at `validUntilInclusive`; equality remains `forecast_valid`. Snapshots preserve `current`, `stale`, `unknown`, `future_invalid`, `forecast_valid` and `forecast_expired`. Refreshing a pack creates a new snapshot; old results continue resolving their inlined essential closure.
+
+### LOG-ASM-001A - total five-category policies
+
+```text
+function assessCategory(category, scenario, calculations, flexibility, snapshot, policy): CategoryAssessment
+  try:
+    facts = resolve only policy-declared FactIds from snapshot
+    require each fact's authority rule permits assessment purpose and required field
+    if required fact absent/stale/conflicting/wrong scope/wrong definition/basis/role:
+      return insufficient(exact MissingRecords and ConflictIds)
+    switch category:
+      electricity:
+        require flexibility complete and consume its post-flex shifted facility profile
+        derive achieved added peak without display rounding and bind flexibility.traceRef
+        apply approved added-peak bands to current typed regional peak/supply facts
+      water:
+        require complete annual_water_demand and peak_day_water_demand CalculationOutputV2
+        compare their conservative upper values to annual and peak-day typed limit facts
+        outcome is the worse band; bind both calculation trace refs and both fact sets
+      resilience: apply verified backup/restriction/commitment branch table
+      economic: compare only commensurate facts; keep direct/indirect/induced separate;
+                exact contradiction key is definition+role+scope+overlapping time+price year
+      community: apply exact tier precedence below; report mana whenua separately
+    return complete with nonempty decisive AssessmentInputRefV2 values, nonempty reasonIds,
+      every consumed fact hash/origin proof/calculation trace and deterministic statement ID
+  catch typed DomainError e:
+    return failed(e) with accumulated decisive refs and nonempty reasonIds
+      // never serialize failure as insufficient
+
+function assessCommunity(snapshot): CategoryAssessment
+  highCategorical = current qualifying authoritative concern facts with value high
+    and basis in {representative_consultation,formal_submission_summary}
+  if highCategorical nonempty:
+    if internally incompatible within same population/window: return insufficient(conflict)
+    return high
+  treat every support/opposition percentage fact as contextual display only
+  remaining = current qualifying authoritative low/moderate facts legal for their basis
+  if remaining contains incompatible values for same population/window:
+    return insufficient(conflict)
+  moderate = current qualifying authoritative moderate facts with basis in
+    {representative_consultation,formal_submission_summary}
+  if exactly one compatible moderate: return moderate
+  low = current qualifying authoritative low facts with basis representative_consultation
+    and qualifying RepresentativeMethodology
+  if exactly one compatible low: return low
+  if incompatible: return insufficient(conflict)
+  return insufficient(missing representative community evidence)
+
+function assessResilience(scenario, snapshot): CategoryAssessment
+  if scenario.backup generation in {diesel,gas,mixed} and
+     scenario.backup.restriction == unrestricted and
+     originProof(backup.restriction) == user_assumption:
+    return complete high with zero FactIds, the exact backup-restriction OriginProofV2,
+      its hash and reasonId unrestricted_fossil_user_assumption
+  verifiedSets = match current qualifying resilience_capacity + backup_duration +
+    resilience_commitment facts by identical technology in {battery,demand_response},
+    scope and overlapping validity
+  if one compatible set has capacity > 0, duration > 0, commitment == true,
+     and every basis/authority is verified/qualifying:
+    return complete low with all three FactIds
+  restrictions = current qualifying binding_restriction facts for fossil technology
+    with value=true and restrictionKind in {emergency_only,time_limited,verified_restricted}
+  if one compatible verified restriction exists: return complete moderate with FactId
+  return insufficient with exact missing capacity/duration/commitment/restriction records
+
+function assessEconomic(scenario, calculations, snapshot): CategoryAssessment
+  resolve only commensurate qualifying economic facts
+  if a scenario construction-jobs value exceeds 10,000 and is not backed by a current
+     qualifying FactId:
+    return complete moderate with zero FactIds, the field's OriginProofV2,
+      any available calculation trace and reasonId unsupported_large_jobs_claim
+  apply the approved commensurate-fact branch table and retain definition/role/scope/
+    overlapping time/price-year identities in decisive refs
+
+function assessOverall(assessments): OverallAssessmentV2
+  require exactly the five category keys and collect their StatementIds in fixed order
+  if any complete high: return complete high with reason overall_high_precedence
+  if any failed: return failed with every failed error ID and reason overall_failed_category
+  if any insufficient: return insufficient with reason overall_insufficient_category
+  if any complete moderate: return complete moderate with reason overall_moderate_precedence
+  require every category is complete low
+  return complete low with reason overall_all_categories_low
+
+function freezeResultSnapshotV2(scenario, calculations, flexibility, snapshot, policy): ResultSnapshotV2
+  require normalized scenario V2 and exact EvidenceSnapshot ID/hash
+  run five assessCategory functions with calculations and flexibility, including the
+    dedicated resilience/economic branches above
+  preserve each CategoryAssessment variant without coercion
+  create CalculationTraceRefV2 for every CalculationOutputV2 and flexibility result
+  overall = assessOverall(five assessments)
+  build ReproducibilityManifestV2 from actual read tracking over every consumed
+    asset/feature/evidence record/fact/policy/geometry/geography hash
+  require assessments has exactly electricity,water,resilience,economic,community
+  require overall references the five frozen category StatementIds exactly
+  canonicalize remainder, calculate resultSnapshotId, deep-freeze and return
+```
+
+`qualifying methodology` requires all fields in CTR-009A, sample/response counts consistent, authority evidence permitted for community assessment, and a deterministic `qualification=qualifying`. A categorical fact based only on informal anecdotes is context. Mana whenua facts render in their own block and do not alter the community band.
+
+### LOG-SITE-001A - closed classification, grouping and sensitivity
+
+```text
+function evaluateCriterion(candidate, criterion, snapshot): SiteFindingV2
+  applicability = evaluate exact ApplicabilityRule from candidate typed fields
+  if applicability == false: return not_applicable with rule hash
+  resolve exact field/layer/fact/geometry declared by criterion kind
+  if unavailable: return finding_missing or finding_partial exactly as declared;
+    MissingPolicy has no fail member
+  if partial: return finding_partial; never convert partial/unavailable data to fail
+  convert units only through criterion.conversionTableVersion
+  for distance/area use exact geometryEngineVersion and geodesic/boundary rule
+  compare an available observed value using exact inclusive/exclusive operator;
+    only this comparison may produce fail; never use display rounding
+  return findingOrdinal plus criterion-declared desirability
+
+function confirmSiteProfile(request: SiteProfileConfirmationRequestV2): ConfirmedSiteProfile
+  require invocation came from coordinator `confirm_site_profile` targeted to analysis worker
+  require request.proposal is SiteProfileCandidateV2 with status proposed_unconfirmed
+  reject any confirmation timestamp, confirmation hash or reviewer field in model output
+  use only request.reviewedCriteria and reviewedPreferenceOrder shown in the review UI
+  derive classificationAffectingCriterionIds exactly from reviewed criteria
+  verify reviewedContentHash; hash proposal, reviewed content, derived ID set,
+    preference order and user-review receipt
+  create revision 1 or the next explicit user-confirmed revision; never auto-confirm
+  persist through a repository-only site_profiles mutation plus operation receipt
+    atomically before emitting site_profile_confirmed
+
+function classify(candidate, confirmedProfile): CandidateScreeningV2
+  require classificationAffectingCriterionIds == exactly
+    set(criteria where affectsClassification == true)
+  require confirmationHash covers criteria plus that exact derived set
+  findings = evaluate every criterion
+  hard = applicable findings whose criterionId is in confirmed classification-affecting IDs
+  failedOutcomes = failureOutcome for every hard finding == fail
+  if failedOutcomes contains excluded: domainOutcome = excluded
+  else if failedOutcomes contains specialist_assessment_required:
+    domainOutcome = specialist_assessment_required
+  else if failedOutcomes contains infrastructure_upgrade_required:
+    domainOutcome = infrastructure_upgrade_required
+  else if any hard finding in {missing,partial}: domainOutcome = insufficient_evidence
+  else: domainOutcome = included
+  presentationGroup = mapDomainOutcome(domainOutcome)
+  return screening with both values and exact findings
+
+function mapDomainOutcome(domainOutcome): SitePresentationGroup
+  excluded -> excluded
+  specialist_assessment_required|infrastructure_upgrade_required|insufficient_evidence ->
+    needs_investigation
+  included -> passes_declared_constraints
+
+function presentCandidates(candidates): visible groups
+  evaluate domain outcome and presentation mapping before preferences
+  sort within each presentation group by confirmed preference keys;
+    for each key use preferred < acceptable < adverse < unknown;
+    tie by candidateId
+  require SitePresentationPolicyV2.kind == separate_classification_groups
+  render three independent map groups; expose no cross-group ordinal/rank
+  show each candidate's five-valued domain outcome in its synchronized panel item
+  bind every candidate to a stable map feature and synchronized panel item
+
+function sensitivity(baseProfile, plan): SensitivityResultV2[]
+  validate plan hash == base profile hash
+  for each declared operand/value in order:
+    change exactly that one operand, enum set or classification toggle
+    recompute every CandidateScreeningV2 and record typed changed findings, domain outcomes
+      and presentation groups
+  never invent a numeric step, value, criterion or weight
+```
+
+The selected behavior is map-first separate presentation groups. Whole-NZ region/site choice occurs by map pointer, touch, keyboard map navigation, place search that focuses the map, or the synchronized accessible map list; checkbox and drop-down selection controls are forbidden. The five-valued domain outcome remains visible and is never replaced by its three-valued presentation group.
+
+### LOG-MAP-SITE-001A - map-first whole-NZ selection and grouped sites
+
+```text
+function selectOnNzMap(interaction): NzMapSelectionState
+  require map extent covers all Stats NZ mainland/island regional geometries
+  if interaction map pointer/touch:
+    hit-test bounded visible features; disambiguate overlaps on-map; choose stable feature ID
+  if interaction keyboard:
+    move focus among visible features in deterministic spatial order; Enter selects
+  if interaction place search:
+    resolve result to GeographyId/FeatureId; move and focus map; user confirms map feature
+  if interaction accessible map list:
+    choose the same FeatureId and focus/highlight it on the map
+  update exactly one shared selection object consumed by map, scenario, evidence and side panel
+  return state with synchronizedPanelHash
+
+function renderSiteGroupsOnMap(candidates): SiteMapGroupView
+  groups = presentCandidates(candidates)
+  assign redundant shape+colour+text symbol by classification, never colour alone
+  cluster only within a classification group; mixed clusters expose counts per group
+  selecting marker/polygon highlights the matching within-group panel item and vice versa
+  never emit a checkbox/drop-down geography selector or cross-group rank
+  return exact candidate-to-feature mapping and group symbols
+```
+
+The list is an accessibility-equivalent view of the map's feature IDs, not an alternate form with different data. Mobile uses the same map with a draggable synchronized result sheet; it does not replace geography choice with a drop-down.
+
+### LOG-BOOT/PACK-001A - resolve and activate content-addressed objects
+
+```text
+function verifyRelease(manifestBytes): VerifiedRelease
+  hash bytes with WebCrypto; parse strict ReleaseManifestV2; verify manifestHash
+  require unique AssetIds and complete packAssets mapping
+  require every core/optional PackId resolves to one manifest asset and >=1 data asset
+  for every pack entry parse strict DataPackManifestV2 and require:
+    key=packId, manifestHash recomputes, manifest asset hash matches release declaration,
+    exact data asset IDs/hashes, nonempty source/licence/attribution/purpose bindings,
+    registry compatibility, coverage and compatible version
+  require dependency graph from pack manifests acyclic and every dependency declared
+  for each required asset:
+    fetch same-origin bytes with byte cap
+    verify byteLength and SHA-256 before parse
+    strict parse by schemaId/version
+    bind parsed object to asset/pack/release hashes
+  validate strict EvidenceRecordV2/PageLocatorV2 records and exact statement/question/
+    missing-voice/company/company-claim/layer ID/hash closures; reject every legacy locator
+  validate the built-in ReadOnlyToolRegistryV2 has exactly five closed read-only entries
+  ensure first-source registry exact 17-entry oracle
+  activate only the fully verified graph
+```
+
+Map feature parsing enforces feature-kind geometry bounds, stable FeatureId, layer, evidence/source/licence, scope, observation, coverage, confidence and qualification. Any feature lacking lineage is rejected at pack build and runtime. Reproducibility collects hashes transitively from only the actual objects touched by an operation.
+
+### LOG-PRODUCT-001B - closed catalog, graph, community, brief, disclosure and diagnostics
+
+```text
+function queryMapProducts(query): MapQueryResultV2
+  resolve features under LOG-MAP and one active release
+  resolve exactly one MapLayerDescriptorV2 for every requested/returned layer ID; validate
+    state/reason, source/date/licence/coverage/confidence, geometry/zoom and statement IDs
+  for every project-layer feature resolve exactly one ProjectCatalogRecordV2 whose
+    mapFeatureId matches and whose status/name/location/source/statement/company IDs validate
+  place/project matches carry that same feature/project identity
+  if a project is selected construct ProjectSheetV2 from the exact catalog record,
+    coverage and fixed actions; never compute a score
+  validate every returned unresolved question against the closed scope/subject matrix and
+    require every subject in the same returned immutable closure
+  return layer descriptors, trusted statements, company records, project records,
+    selected sheet, features/list selection and release hash together
+
+function validateUnresolvedQuestion(question, containingClosure)
+  strict-decode UnresolvedQuestionV2; require embedded statement ID/hash/origin/trust label
+  allowed = {
+    map: [geography,project,company,site_candidate,evidence,statement],
+    case: [project,company,geography,site_candidate,evidence,statement],
+    evidence: [evidence,statement,project,company,geography],
+    company: [company,statement,evidence,project],
+    site: [site_candidate,geography,project,evidence,statement],
+    brief: [project,company,geography,site_candidate,evidence,statement]
+  }[question.scope]
+  require every unique subject kind is in allowed and every typed ID resolves byte-identically
+    in containingClosure; reject all omitted pairs and opaque/orphan subject IDs
+  require no subject variant can carry a current or older briefSnapshotId
+  recompute question contentHash with only itself omitted
+
+function loadProjectCase(locator: ProjectCaseLocatorV2): ProjectCaseV2
+  if locator.kind == prepared_asset, resolve the selected catalog record's exact caseAssetId
+    through the active/retained verified release, strict-load the case and recompute caseSnapshotId
+  else resolve the immutable caseSnapshotId through the exact retained case/asset index
+  require embedded catalog record hash, graph snapshot/evidence snapshot identity,
+    all edge/node/evidence/statement/question/company/claim IDs, community records,
+    events, missing voices and counts resolve
+  validate every unresolved question against the exact closed scope/subject matrix
+  require manaWhenuaCommunityRecordIds equals exactly the distinct mana-whenua records;
+    validate missing voices remain typed/distinct and every company claim role/identity
+  reject the case atomically on any orphan/hash/taxonomy mismatch
+
+function queryEvidenceProducts(query): EvidenceQueryResultV2
+  strict-load the named EvidenceSnapshot and apply exact ID/maximum-record filters
+  return selected EvidenceRecordV2/facts/conflicts plus the exact statement/question/
+    missing-voice/company/company-claim/edge/community closure needed to resolve every ID
+  validate every question with validateUnresolvedQuestion; recompute entry/content hashes
+    and reject an orphan, illegal pair, legacy locator or partial closure
+
+function queryEvidenceGraph(query): EvidenceGraphQueryResultV2
+  strict-load graph by graphSnapshotId and verify its content hash/edge entries
+  require every typed seed node, edge type and edge-type endpoint-kind pair is legal;
+    apply exact maximumEdges before traversal
+  resolve every document_page through PageLocatorV2 and every statement/company node through
+    the graph's exact statement/company/claim closure
+  return those exact selected statements/companies/claims with accepted prepared/manual edges
+    for trusted views and candidate AI edges only when
+    the caller explicitly requested their labelled state; graph reachability grants no authority
+
+function buildImpactBrief(request): ImpactBriefV2
+  require analysis-worker build_impact_brief command and strict immutable input snapshots
+  deterministically bind calculations, five category outcomes, evidence, assumptions,
+    conflicts, typed unresolved questions, company roles, limitations and mandatory
+    professional disclaimer; copy exact trusted statement records into the brief closure
+  validate every question against the closed matrix; for scope=brief require only stable
+    underlying IDs in that closure and reject any attempted current/older brief-hash subject
+  construct technical/plain-language trusted sections and deterministic Markdown
+  include an AI appendix only from a complete/partial validated agent receipt with exact
+    labelled claims/citations; never let it replace deterministic sections
+  canonicalize the complete remainder once, compute briefSnapshotId in one forward pass with
+    only that field omitted, recompute all referenced IDs and require the target briefs-envelope
+    recordId equals briefSnapshotId, then atomically persist one briefs envelope plus
+    repository receipt before emitting
+    impact_brief_ready
+
+function loadImpactBrief(briefSnapshotId): ImpactBriefV2
+  strict-load the immutable briefs envelope; recompute snapshot/semantic/reference hashes
+  require every result/case/evidence/statement/disclaimer reference remains resolvable
+  return byte-identical stored brief or typed failure; never regenerate during restore
+
+function copyImpactBrief(brief, format): ImpactBriefCopyOutcomeV2
+  derive plain text or Markdown solely from the trusted deterministic brief plus its
+    separately labelled validated appendix; recompute content and semantic hashes
+  if Clipboard succeeds return copied without returning content
+  otherwise expose that exact content in a focused selectable region with guidance
+
+function prepareExternalDisclosure(requestIdentity, config, routeId, operationKind,
+    optionalModelPurpose, optionalToolId, exactContextProjection, categories, sendFlags,
+    canonicalOutboundBytes):
+    ExternalDisclosureV2
+  accept only sanitized connector origin/label, current configurationHash, declared route,
+    exact operation kind/optional model purpose/optional closed tool ID and its exact agent-stage,
+    direct-query or connector-test context projection; require model purpose exactly for
+    primary_model and tool ID exactly for agent_tool/direct_research
+  hash the prompt without retaining it when sendsPrompt, then hash promptHash + context +
+    sorted categories + send flags into selectedContextHash; hash the exact canonical outbound
+    bytes before credential insertion into outboundContentHash; set provider-retention state,
+    cancel/clear controls and exact ten-minute expiry; include no endpoint path or content bytes
+  changing request/generation/connector/config/origin/route/operation/tool/content/context/
+    category/flag invalidates only that destination's prior acceptance
+
+function acceptExternalDisclosure(disclosure, userAction): ExternalDisclosureAcceptanceV2
+  require unexpired disclosure and explicit user_accepted action
+  hash the whole accepted disclosure; no implicit/global acceptance exists
+
+function emitDiagnosticV2(candidate): DiagnosticEventV2
+  construct only the closed enum/scalar allowlist; never spread error/provider/content objects
+  allow only sanitized connector/source label, status class, timing bucket, bounded counts and
+    correlation/version IDs; recompute eventHash and append to a 500-event in-memory ring
+  reject unknown/free-text/URL/path/prompt/scenario/document/evidence/secret fields
+```
+
+`DataPackManifestV2` is the only pack-manifest decoder. Catalog records, graph snapshots, community records and prepared case records are content-addressed pack assets and stay available in the retained verified generation when offline. Briefs are immutable device records. Route restoration resolves `projectId/caseSnapshotId/briefSnapshotId` to these exact records; it never accepts a hash without its strict record. `DiagnosticEventV2` may be exported locally only after revalidation and is never sent as telemetry in the core release.
+
+### LOG-WORKER-001A - closed coordinator/worker operation graph
+
+```text
+function dispatchWorkerCommand(command: WorkerCommandV2<WorkerCommandPayloadV2>): terminal event
+  strict-decode the closed command union; reject unknown kind/field before dispatch
+  require target instance/epoch is ready and generation is current
+  require command kind -> worker ownership exactly:
+    analysis = query_map, resolve_location, load_pack_assets, load_project_case,
+      load_impact_brief, build_impact_brief,
+      normalize_scenario, build_analysis_snapshot, build_comparison, screen_sites,
+      run_site_sensitivity, confirm_site_profile, query_evidence, resolve_visual,
+      query_evidence_graph, inspect_research_cache, compile_research,
+      build_agent_projection, validate_pack
+    connector = execute_agent, authorize_agent_destination, fetch_research,
+      normalize_connector_draft,
+      commit_connector_configuration, discard_connector_draft, replace_connector_secret,
+      test_connector_capabilities, persist_connector_after_success, clear_connector_secret,
+      remove_connector_configuration, clear_all_connector_secrets
+    either exact queued/active target = cancel_operation, whose payload target tuple must
+      match the command target worker instance/epoch and one known original operation
+  for authorize_agent_destination require target.workerKind=connector and the full target
+    tuple names one suspended active execute_agent; queued/non-agent/terminal targets reject
+  coordinator sends one WorkerCommandV2; direct UI/module/worker side channels are forbidden
+  worker emits ordered WorkerEventV2 progress and exactly one terminal payload whose kind
+    matches the command result family
+  coordinator accepts an event only when operationId, requestId, generation,
+    producer worker kind, instance and epoch all match the active command
+  unknown/wrong-worker/wrong-epoch/wrong-generation/late-terminal events are obsolete
+  cancellation command terminalizes once as cancellation_acknowledged; a successfully
+    cancelled original operation separately terminalizes exactly once in its command family
+
+command/result pairs:
+  query_map -> map_query_ready(MapQueryResultV2)
+  resolve_location -> location_resolution(LocationResolutionOutcomeV2)
+  load_pack_assets -> pack_assets_ready(PackAssetLoadResultV2)
+  load_project_case -> project_case_ready(ProjectCaseV2)
+  load_impact_brief/build_impact_brief -> impact_brief_ready(ImpactBriefV2)
+  normalize_scenario -> scenario_validation(ScenarioValidationOutcomeV2)
+  build_analysis_snapshot -> analysis_snapshot_ready(ResultSnapshotV2)
+  build_comparison -> comparison_ready(ComparisonSnapshotV2)
+  screen_sites -> site_screenings_ready(CandidateScreeningV2[])
+  run_site_sensitivity -> site_sensitivity_ready(SensitivityResultV2[])
+  confirm_site_profile -> site_profile_confirmed(ConfirmedSiteProfile)
+  query_evidence -> evidence_query_ready(EvidenceQueryResultV2)
+  query_evidence_graph -> evidence_graph_query_ready(EvidenceGraphQueryResultV2)
+  resolve_visual -> visual_resolution_ready(VisualOutcomeV2)
+  inspect_research_cache -> research_cache_inspection(ResearchCacheInspectionV2)
+  fetch_research -> research_fetch_ready(ResearchFetchResultV2)
+  compile_research -> research_compilation_ready(ResearchCompilationOutcomeV2)
+  normalize_connector_draft -> connector_draft_ready(SanitizedConnectorDraftV2)
+  commit_connector_configuration -> connector_configured(configuration + vaultReceipt)
+  discard-draft/replace/persist-after-success/clear/remove/clear_all connector operations ->
+    connector_vault_mutation
+  test_connector_capabilities -> connector_capabilities(ConnectorCapabilityMatrixV2)
+  build_agent_projection -> projection_ready(AgentContextProjection)
+  execute_agent -> agent_terminal(AgentTerminalResultV2)
+  authorize_agent_destination -> destination_disclosure_accepted(target + acceptanceHash)
+  cancel_operation -> cancellation_acknowledged(CancellationAcknowledgementV2)
+  validate_pack -> pack_validation
+```
+
+The cancel command has its own new operation/request/generation tuple and carries one complete `CancellationTargetV2`. If it targets a queued `execute_agent`, the connector removes only that entry, constructs the zero-activity receipt from its already-validated request/projection/execution binding, emits exactly one `agent_terminal(status=cancelled)` on the original tuple with the cancel-command ID, and acknowledges `cancelled_queued` on the cancel tuple. If the agent is active, it signals only that operation, acknowledges `signalled_active`, and the original emits the same single agent terminal after cooperative cleanup with final counters. A cancelled non-agent original instead emits exactly one `operation_cancelled`. An already-terminal, absent, wrong-worker, wrong-instance/epoch or otherwise mismatched target produces only the corresponding acknowledgement and never cancels a sibling. A target terminal racing before cancellation wins; the acknowledgement is `already_terminal` and no second target terminal is accepted. An agent original never emits `operation_cancelled`, and a non-agent original never fabricates an `AgentExecutionReceipt`.
+
+All coordinate/location, map/catalog/sheet, case, impact-brief, scenario, calculation/assessment, comparison, site profile confirmation/screening, evidence/graph and visual work therefore crosses the same versioned coordinator boundary that enforces epochs, generations, cancellation and terminality. Connector setup/capability/vault commands use the same envelope and terminal rules but their secret-bearing structured-clone payloads are excluded from JSON serialization and transferred exactly once.
+
+### LOG-AGENT-001A - coordinator-mediated bounded agent execution
+
+```text
+function beginAgent(request: AgentRequestV2, signal): AgentTerminalResultV2
+  strict-decode AgentRequestV2 including StageContext
+  require analysisReady and connectorReady handshakes for current instance/epoch
+  load SanitizedConnectorConfiguration by request.connectorId; require unexpired capability
+    matrix matches configurationHash and selected route/dialect/model are supported
+  construct AgentExecutionBindingV2 from that exact public configuration/matrix; hash it
+  strict-validate request.acceptedDisclosureAcceptances as a canonical acceptance-hash set;
+    require one exact primary_model acceptance for the current primary connector/config/
+    origin/route/initial outbound prompt+context bytes, purpose=initial and this
+    request/operation/generation
+  strict-load the five-entry ReadOnlyToolRegistryV2; require requested tool scopes are exact
+    ReadOnlyToolIdV2 values supported for mode/stage; require exactly one request-frozen
+    ToolRouteBindingV2 per allowed scope and no extra binding; each binding must match one
+    current connector/configuration/capability matrix, its registry connector kind and route
+    capability; reject zero/two compatible bindings rather than choosing by kind/order/model
+  validate every additional preaccepted model/tool disclosure against the primary execution
+    binding or the exact named ToolRouteBindingV2, content hash and ten-minute expiry;
+    an uncontacted preaccepted destination grants no background fetch
+  require disabled tools have zero route bindings; disable unsupported actions rather than
+    inferring them from chat, MCP discovery or streaming support
+  coordinator -> analysisWorker via WorkerCommandV2 targeted to exact instance/epoch:
+    buildProjection(request.stage, selected context IDs)
+  projectionBytes = analysis response
+  verify schema, analysis instance/epoch, byteLength <= maximumContextBytes, hash,
+    exact disclosure categories and requested StageContext variant
+  validate projection contains only inert typed values and allowed tool scopes
+  structuredClone request + projection + executionBinding in WorkerCommandV2 targeted to
+    connector instance/epoch; connector recomputes both hashes and requires every
+    connector/config/matrix/route/dialect/model/label field still matches
+    // no worker-to-worker call
+
+  connector establishes canonical effectiveAccepted = request.acceptedDisclosureAcceptances,
+    contactedNetworkAttempts=[], all receipt counters=0, a request wall deadline and
+    per-request tool receipt maps
+
+  function authorizeOutbound(disclosure): ExternalDisclosureAcceptanceV2
+    require disclosure exactly binds the active original target, operation kind/purpose,
+      connector/configuration/origin/route/tool/content/context and is not expired
+    if effectiveAccepted has its exact unexpired acceptance: return it
+    emit nonterminal destination_disclosure_required on the original tuple and suspend it
+    coordinator obtains explicit user choice and, only on acceptance, sends
+      authorize_agent_destination on a new command tuple carrying the original exact target
+      plus the byte-identical acceptance
+    connector validates command target/current epoch/disclosure bytes/expiry, acknowledges the
+      authorization command once, inserts the unique acceptance in canonical hash order, emits
+      destination_disclosure_accepted on the original tuple and resumes it
+    decline, expiry, substitution, conflicting duplicate, cancellation or stale target resumes
+      no fetch and terminates the original with its exact current receipt
+    return the newly accepted value only after acknowledgement
+
+  function recordNetworkAttempt(disclosure, acceptance, call identity, attemptOrdinal)
+    require acceptance is in effectiveAccepted and exactly accepts disclosure
+    atomically increment networkAttemptCount and append the next gap-free
+      AgentOutboundContactReceiptV2 before guardedFetch begins; require
+      networkAttemptCount == contactedNetworkAttempts.length
+
+  while not terminal:
+    before every model HTTP request:
+      require modelCallCount < maximumModelCalls
+      revalidate connector URL/policy and worker epoch
+      derive purpose=initial|tool_result_continuation|format_repair|continued_reasoning and
+        construct the exact primary_model disclosure over these canonical request bytes
+      primaryAcceptance = authorizeOutbound(disclosure)
+      require it is still unexpired and byte-identical; then modelCallCount += 1
+      send maximumOutputTokens through the selected dialect's declared field
+      start a fresh abort deadline <= perNetworkCallTimeoutMs and remaining wall time
+      recordNetworkAttempt(disclosure, primaryAcceptance, modelCallOrdinal, attemptOrdinal=1)
+      execute the model request only through guardedFetch with that primary acceptance and
+        no tool-registry entry
+      on 429 or transient 5xx only, retry only an idempotent read when
+        transientRetryCount < maximumTransientRetries; increment before retry and
+        repeat URL/epoch/deadline guards, revalidate the same acceptance and call
+        recordNetworkAttempt with attemptOrdinal=2 before the retry
+      never retry auth, CORS, redirect, schema, cancellation or non-idempotent failure
+    stream with maximumResponseBytes and maximumOutputTokens enforced before exposure;
+      use verified provider output usage when available, otherwise count every emitted
+      UTF-8 byte as a conservative upper bound on output tokens
+    parse model response as inert content
+    if format repair required:
+      require formatRepairCount < maximumFormatRepairs
+      formatRepairCount += 1
+      construct the changed repair body and continue through the common authorization/model guard
+    for requested tool call:
+      require toolMode=enabled and toolRequestCount < maximumToolRequests;
+        increment toolRequestCount exactly once on receipt from the model
+      strict-decode exactly one ReadOnlyToolArgumentsV2 and resolve its ReadOnlyToolRegistryV2
+        entry and the request's single ToolRouteBindingV2 for that ID; require mode, stage,
+        projection scope, bound connector/configuration/route capability,
+        sideEffectClass=read_only_external_research and expected result kind all match;
+        any failure increments preallocationRejectCount and returns a typed inert tool error
+      reject argument text/URLs equal to active secret material or matching credential/
+        authorization/key patterns before disclosure, hashing or persistence; classify the
+        rejection in preallocationRejectCount
+      canonicalize exact arguments against that frozen route; compute argumentHash
+      durableAlias = lookup(requestId, callId) before disclosure, quota mutation or child allocation
+      if durableAlias exists with different argumentHash, tool ID or frozen route binding:
+        increment preallocationRejectCount and terminalize tool_call_id_conflict with no network
+      if durableAlias exists and matches:
+        increment sameCallReplayCount; return its recorded result/receipt without appending it,
+        allocating a child, consuming maximumToolCalls or performing network
+      if toolCallCount == maximumToolCalls:
+        increment preallocationRejectCount and terminalize the new logical call as limit
+      construct exact agent_tool disclosure over arguments/outbound bytes and the frozen route
+      toolAcceptance = authorizeOutbound(disclosure); if authorization does not complete,
+        increment preallocationRejectCount before the original terminal
+      revalidate route binding, acceptance, wall deadline and worker epoch
+      increment toolCallCount and allocate one unique child toolOperationId
+      construct ToolOperationV2 with exact arguments, connector kind/ID, configurationHash,
+        routeId and byte-identical toolAcceptance; calculate operationHash
+      if same operationHash completed under another ID in this request:
+        build networkPerformed=false CompleteToolReceiptV2 and ToolCallAliasRecordV2
+        atomically append alias + receipt under the unique child toolOperationId
+        return recorded result only after that commit
+      schedule no more than maximumConcurrentTools and record concurrency high-water
+      execute only that compile-time registered read-only tool within projection scope using
+        guardedFetch; call recordNetworkAttempt(disclosure, toolAcceptance, tool child/call ID,
+        attemptOrdinal=1) immediately before fetch and apply the same per-call/wall deadline;
+        a permitted transient retry revalidates the same acceptance, increments the shared retry
+        counter and records attemptOrdinal=2 before retry
+      strict-parse as one SanitizedToolResultV2 variant and sanitize citations
+      require cumulative citations <= maximumCitations and research result items <=
+        maximumResearchItems before allocation/exposure
+      construct immutable ToolReplayRecord containing full ToolOperationV2, exact result,
+        completedAt, networkPerformed and CompleteToolReceiptV2
+      through repository-only append_tool_completion, atomically commit the replay record
+        to tool_replay, initial alias to tool_aliases and byte-identical complete receipt
+        to tool_receipts
+        before exposing result to model/UI
+      every admitted new logical call appends exactly one complete/rejected/failed ToolReceipt;
+        cancellation/failure after child allocation uses a failed receipt and never drops the slot
+    validate every claim-to-citation edge and structured result schema; update exact
+      output-token/citation/research counters in AgentExecutionReceipt
+  emit exactly one WorkerEventV2 terminal carrying AgentTerminalResultV2,
+    which always attaches AgentExecutionReceipt with byte-identical canonical
+    acceptedDisclosureAcceptances, exact contactedNetworkAttempts and exact counters
+    satisfying toolRequestCount = toolCallCount + sameCallReplayCount +
+    preallocationRejectCount and toolCallCount = toolReceipts.length
+
+on exact cancellation target:
+  abort fetch/stream; cooperative parsers check signal every <=1 MiB or <=25 ms
+  terminalize the original exactly once as agent_terminal(status=cancelled) with the final
+    receipt and cancelledByCommandOperationId; queued cancellation uses zero activity counters;
+  discard late generation output and leave all sibling operations untouched
+on worker restart:
+  allocate new instanceId/epoch; terminalize all old-epoch operations worker_restarted
+  clear in-memory secret handles; require explicit user retry and ready handshake
+on crash/reload after a completed tool network call:
+  rebuild per-request callId/argumentHash/operationHash indexes from durable
+    ToolCallAliasRecordV2 records; resolve replay records and matching tool receipts;
+    verify every transaction hash before accepting an index entry; reconstruct one counted
+    logical call/receipt per distinct alias call ID and never synthesize a second child/receipt
+    for a repeated same call ID
+  replay exact stored result+citation payload without network; audit/recovery simulation of the
+    same request preserves counters, while real worker restart still requires explicit retry
+```
+
+Each request has independent exact maxima for model calls, format repairs, model-emitted tool requests, new logical tool calls/concurrency, wall/per-network time, transient retries, context/response bytes, output tokens, citations and research items. Equality is permitted and one-over terminalizes as `partial` when validated cited content exists or `failed` otherwise; deterministic output remains visible. A same-call replay may occur at logical-call quota equality but remains bounded by `maximumToolRequests`; a new call at logical-call equality is a pre-allocation limit rejection. A formatting repair is a real model call and each changed body is separately accepted. Every retry is a contacted network attempt but not a new logical model/tool call; all retries share one request-level retry counter and wall deadline. No retry, restart or reconnection automatically resends a credential.
+
+### LOG-CONN-001A - direct fetch and vault lifecycle
+
+```text
+function guardedFetch(connectorId, routeId, publicArgs, credentialHandle,
+    disclosureAcceptance, optionalAgentContactReceipt, optionalReadOnlyToolEntry,
+    optionalToolRouteBinding): ConnectorOutcome
+  config = resolve sanitized configuration
+  canonicalOutboundBytes = build exact request bytes without credential
+  require unexpired accepted disclosure matches request/operation/generation, connectorId,
+    config.configurationHash, origin, routeId, operation/tool kind/model purpose and
+    hash(canonicalOutboundBytes); otherwise return before URL construction/network
+  if optionalAgentContactReceipt exists, require it was gap-free appended before this attempt,
+    resolves this exact acceptance/content/configuration/route and matches primary model ordinal
+    or tool child/call identity; otherwise return before URL construction/network
+  if optionalReadOnlyToolEntry exists, require it is the exact built-in registry entry whose
+    connector kind/route capability/argument/result schemas match this request and require the
+    exact request-frozen optionalToolRouteBinding; if neither exists require both are absent
+  if config.endpointRoute.visibility == public_path:
+    policy = construct policy from public origin/base path + declared routeId
+  else:
+    policy = vault.resolveRoutePolicy(config.endpointRoute.vaultRoutePolicyId, routeId)
+    require policy public origin equals config.normalizedOrigin and policy ID is not
+      derived from route/path/query bytes
+  sensitiveUrl = vault.constructSensitiveUrl(config, routeId, publicArgs, credentialHandle)
+  parsed = vault.parseFinalUrl(sensitiveUrl)
+  require parsed.scheme == https and parsed.origin == policy.configuredOrigin
+  require parsed.path matches policy.declaredRoute
+  require no userinfo and no fragment
+  require credential appears only at policy.authorizationPlacement
+  response = fetch(sensitiveUrl, {
+    redirect: error, credentials: omit, referrerPolicy: no-referrer, cache: no-store,
+    headers/body: vault.authorizedRequestParts(policy, credentialHandle) })
+  if response is redirect or effective URL/origin differs: fail and destroy handles
+  stream bounded response through strict inert parser
+  serialize only public citation URLs; reject endpoints/secret params/userinfo/fragments
+  return sanitized outcome; never return sensitiveUrl or credential bytes
+
+function firstUsePersistence(choice): CredentialRecord
+  if choice encrypted_persistent:
+    attempt non-extractable CryptoKey + encrypted record
+    on denial: show explicit choice of disclosed browser-local or session-memory
+  if choice disclosed_browser_local: require versioned disclosure acceptance
+  if choice session_memory: persist no secret bytes
+
+function normalizeConnectorDraft(setup: ConnectorSetupV2): SanitizedConnectorDraftV2
+  require connector-worker `normalize_connector_draft` clone command for current epoch/generation
+  copy into dedicated mutable endpoint/secret buffers, transfer each once, require sender
+    views detached, and validate the final HTTPS endpoint in the vault
+  if setup endpoint is public_endpoint:
+    reject userinfo, query, fragment and credential-shaped path segments
+    expose SanitizedEndpointRouteV2.public_path with its normalized base path
+  else sensitive_endpoint:
+    parse only inside the vault; reject userinfo or fragment and destroy the ingress buffer
+      without serializing either; retain the entire accepted path/query and exact route policy
+      only as staged vault material; generate a random UUIDv7 vaultRoutePolicyId independent
+      of those bytes; use only fixed dialect tokens or separately random IDs as public routeIds
+    expose SanitizedEndpointRouteV2.sensitive_vault_route plus origin-only endpoint label
+  validate model ID, dialect preference, auth placement and allowlisted non-secret headers
+  reject duplicate headers, undeclared names, CR/LF, authorization/cookie semantics,
+    and any header value equal to or shaped like active credential material
+  if endpoint is public_endpoint and setup.secretIngress.kind == none:
+    require persistenceMode=session_memory and authorization capability starts not_applicable
+  if endpoint is sensitive_endpoint, treat its route bytes as credential material even when
+    secretIngress.kind == none and apply the selected first-success persistence mode
+  create content-addressed draft with createdAt and expiry exactly ten minutes later
+  zero-fill worker ingress buffers after import/staging; return no handle or secret-bearing URL
+
+function discardConnectorDraft(draftId, draftHash): ConnectorVaultMutationReceiptV2
+  require connector-worker `discard_connector_draft` clone command
+  load the exact staged draft or return a typed not-found/expired failure
+  destroy its staged endpoint and credential material, then return one sanitized
+    `draft_discarded` receipt; timer expiry performs the same destruction without reuse
+
+function commitConnectorConfiguration(draftId, draftHash, confirmationHash):
+    sanitized configuration + vault receipt
+  load exact unexpired staged draft; verify user confirmation and hashes
+  create initial all-not-tested ConnectorCapabilityMatrixV2 bound to configurationHash
+  persist complete SanitizedConnectorConfiguration; retain secret as pending first-use
+    session material unless user explicitly selected session-only
+  for a sensitive route, configurationHash covers only visibility + random vault policy ID;
+    accepted path/query bytes remain solely in the staged vault record and rejected
+    userinfo/fragment bytes are destroyed without crossing the vault boundary
+  destroy staged draft and return sanitized records only
+
+function testConnectorCapabilities(connectorId, disclosureAcceptances): ConnectorCapabilityMatrixV2
+  load persisted sanitized configuration and vault secret handle
+  require a unique unexpired connector_test acceptance for every exact attempted route/request,
+    all bound to this command identity, connector and current configurationHash/origin
+  test CORS, authentication, requested dialect, model, streaming, structured output,
+    function/tool calling and remote MCP as applicable using guardedFetch with the matching acceptance
+  record each exact supported|unsupported|not_applicable state and reason IDs,
+    testedConfigurationHash and expiry exactly 24 hours after test
+  choose selectedDialect only when supported; persist updated matrix/configuration
+  never treat one supported feature as proof of another
+
+function persistConnectorAfterSuccess(connectorId, successfulReceiptId): vault receipt
+  verify the referenced capability/agent receipt completed successfully for the same
+    connector and current configurationHash
+  if configured persistence is encrypted_persistent, import a non-extractable key and
+    persist AES-GCM material now; if disclosed_browser_local require prior disclosure;
+    session_memory performs no persistence write
+  emit one sanitized immutable receipt; refresh can then restore without secret re-entry
+
+function mutateConnectorVault(command): ConnectorVaultMutationReceiptV2
+  accept only discard draft, replace, persist-after-success, clear one, remove configuration or
+    confirmed clear-all clone commands
+  for remove_configuration, write ConnectorRemovalJournalV2 naming the exact public
+    configurationHash plus only 0..2 credential and 0..1 sensitive-route counts; the vault
+    adapter binds its private IDs internally; disable the connector, destroy those exact vault
+    records first, advance counts/phase, then remove configuration and complete the receipt;
+    resume that journal after interruption and never expose or enumerate unrelated IDs
+  atomically update vault and sanitized configuration as declared for all other actions
+  zero-fill received ingress buffers and destroy/drop old in-memory handles;
+    return sanitized immutable receipt
+```
+
+`clear_secret` destroys the secret and keeps a sanitized configuration; `remove_configuration` destroys both and produces a distinct receipt. Storage denied/private mode never falls back silently. Error/citation/diagnostic serializers perform both pattern rejection and equality checks against active secret values without logging matches.
+
+### LOG-SAVE-001A - typed transactions and crash replay
+
+```text
+function applyStorageCommand(command: StorageCommandV2): StorageCommandOutcomeV2
+  strict-decode the explicit caller-writable command variant
+  if command.action == request_clear_plan:
+    require exact confirmation for the immutable plan and dispatch executeClearPlan(plan)
+    return its resumable ClearReceipt; do not synthesize a single-store StorageReceipt
+  reject any caller attempt to write results, comparisons, cases, briefs, research, agent_receipts,
+    site_profiles, connector_config,
+    tool_replay, tool_aliases, tool_receipts, migrations, operation_receipts or quarantines
+  convert the legal command to a RepositoryMutationV2 inside the repository boundary only
+  canonicalCommandHash = hash(exact action,store,recordId,revision,payloadHash,
+    complete canonical clearPlan including target set/counts/confirmation when present)
+  prior = receiptStore.get(operationId)
+  if prior exists and prior.commandHash == canonicalCommandHash: return byte-identical prior receipt
+  if prior exists and prior.commandHash != canonicalCommandHash: return operation_id_conflict
+  preflight per-record/per-store caps, exact 5,000 total tombstones,
+    5,000 receipts, 160 MiB warning and 200 MiB hard total cap
+  for result/case deletion require zero live dependent briefs or return blocked with count
+  in one IndexedDB transaction:
+    verify expected revision
+    write either closed StoreRecordV2 live envelope or tombstone; never both payload and deletedAt
+    write immutable receipt before commit
+  on abort return typed blocked/quota/failure without partial mutation
+
+function restoreScenario(envelope): RestoreOutcome
+  strict decode; reject/quarantine stored origin proof or unsupported/corrupt record
+  take saved raw draft and immutable refs
+  send draft through current normalization/origin-proof LOG-VAL
+  preserve immutable refs; show version drift rather than mutating them
+
+function persistToolCompletion(replay, alias, receipt): StorageReceipt
+  require repository-only RepositoryMutationV2.append_tool_completion
+  require replay.completeReceipt byte-equals receipt and alias.completeReceipt byte-equals receipt
+  require operation.toolOperationId is unique across every stored tool alias/receipt/replay
+  recompute acyclic replayRecordId, aliasRecordId and tool receiptHash;
+    build repository commandHash from append action + toolOperationId + replayRecordId +
+    aliasRecordId + tool receiptHash
+  construct repository receipt, set replay.transactionReceiptHash to its receiptHash,
+    and require result/citation/completion/network fields and all hashes recompute exactly
+  require repository receipt action=append, store=tool_replay and recordId=replayRecordId;
+    its commandHash also binds the matching tool_receipts record by tool receiptHash
+  in one IndexedDB transaction write replay to tool_replay, alias to tool_aliases,
+    receipt to tool_receipts and the repository operation receipt;
+    abort all writes if any step fails
+
+function persistToolAlias(alias, receipt): StorageReceipt
+  require repository-only RepositoryMutationV2.append_tool_alias and unique toolOperationId
+  require alias.completeReceipt byte-equals receipt and referenced replay already validates
+  atomically write alias to tool_aliases, receipt to tool_receipts and repository receipt
+  expose deduped result only after commit; abort all on any failure
+
+function inspectResearch(recordId): ResearchCacheInspectionV2
+  load and strict-decode ResearchCacheRecordV2
+  expose its sanitizedQuery, connector, result/evidence IDs, source URLs,
+    initial/retrieval times, freshness, versions and expiry; expose no credentials
+
+function fetchResearch(request: ResearchFetchRequestV2): ResearchFetchResultV2
+  require connector-worker `fetch_research` command and explicit initial/refresh user action
+  require request identity equals the WorkerCommandV2 envelope; load the current connector
+    configuration and exact ReadOnlyToolRegistryV2 entry for request.toolId
+  canonicalize the exact sanitized query/route request bytes; require an unexpired
+    direct_research disclosure acceptance matching request/operation/generation, connector,
+    configurationHash, origin, routeId, toolId and outboundContentHash
+  for refresh, load/verify prior query identity before dispatch
+  execute declared read-only connector through guardedFetch and return only strict inert
+    ResearchNetworkResultV2, result IDs,
+    citations, source URLs, retrieval time and connector schema version
+  return no EvidenceId, FactId, authority or freshness field
+
+function compileResearch(request: ResearchCompilationRequestV2): ResearchCompilationOutcomeV2
+  require analysis-worker `compile_research` command and strict fetch-result hash
+  validate URLs/citations; compile fetched content only as candidate evidence under authority rules
+  calculate freshness against request.asOf and policy; assign candidate EvidenceIds/FactIds
+    only inside analysis worker
+  create initial ResearchCacheRecordV2 for mode=initial
+  for refresh, preserve initialRetrievedAt, set retrievedAt/lastRefreshedAt,
+    set refreshOfRecordId and create a new immutable revision
+  embed exact candidate EvidenceRecordV2/facts and matching ID lists plus the exact
+    destination disclosure acceptance hash in the cache record;
+    persist its one envelope plus repository receipt atomically after successful compilation
+  never relabel or mutate an expired prior record
+
+function executeClearPlan(plan): ClearReceipt
+  write plan/initial receipt to separate gridlens_control database first
+  resume from control receipt if same plan/hash
+  if plan.scope == selected_application_data:
+    require includeVault=false and every store is GenericClearableStoreV2;
+    reject connector_config, connector targets or a silently broadened clear
+  else all_application_and_connectors:
+    require includeVault=true and stores equal the canonical complete StorageStoreV2 set
+    enumerate every current sanitized connector through the connector adapter only; require
+      the displayed connectorTargets/config hashes/credential counts/route-policy counts and
+      confirmation hash equal that exact set before any mutation
+    disable all targets; for each target destroy only its named vault records, commit progress,
+      then remove its matching connector_config record and commit progress
+    if vault destruction fails leave that target's configuration intact; after destruction,
+      an interruption resumes configuration removal and can never leave a secret orphan
+    mark vault and connector_config complete only after every frozen target is complete
+  if plan selects any of tool_replay|tool_aliases|tool_receipts, require the displayed
+    plan includes all three stores and delete aliases/receipts before their replay records
+  if plan selects results or cases, require it includes all dependent briefs and delete
+    those brief records before their referenced sources
+  clear one remaining declared application store per committed transaction, excluding
+    operation_receipts until last, and update control receipt after each
+  clear operation_receipts last; never clear gridlens_control in-app
+  interruption leaves pending store list in control database and resumable=true
+```
+
+V1 retains tombstones and receipts until a user-approved clear/export; no automatic compaction can resurrect deletion or erase idempotency. Research expiry becomes a visible clear plan, never background silent loss.
+
+### LOG-OFF-001A - serialized no-skipWaiting updates
+
+```text
+on manifest discovery:
+  if candidate exists: queue newest manifest hash; do not parallel-download
+  create generation-specific candidate cache
+  fetch/hash/parse every required asset; on any failure delete candidate cache only
+  mark verified_waiting; notify every controlled client with update_ready
+
+on client reply:
+  record ready or busy for that client
+  do not call skipWaiting
+  busy client offers cancel/finish; immediate reload disabled while operation active
+
+activation condition:
+  old worker activates only through normal lifecycle after all old clients
+  close, navigate or explicitly reload
+  new client boot independently revalidates candidate manifest and bound assets
+  atomically label candidate active; retain previous verified generation for rollback
+  process queued newer manifest after terminal state
+
+on cache quota/storage pressure:
+  remove candidate and unpinned inactive optional caches only
+  preserve active shell/core and saved/vault data
+```
+
+BroadcastChannel is an optimization only. `clients.matchAll()+postMessage` drives the same state machine when it is missing. Optional cache keys include generation ID, so two generations never share mutable response bytes.
+
+### LOG-EMI-001A - effective joins, exact interval aggregation and publication
+
+```text
+function compileEmi(candidateWindow, schema, nspRows, authorityRules, qualityPolicy): EmiPublishOutcome
+  require qualityPolicy exactly equals approved Balanced EmiQualityPolicyV1 version 1.0.0
+  expectedInstants = enumerate NZ trading days as UTC instants;
+    ordinary=288, spring-forward=276, fall-back=300 at five-minute cadence
+  staged = strict-stream source rows under byte/row caps
+  require exact columns, offset-bearing IntervalDateTime, MW and NZD/MWh units, RTD case
+
+  partitions = group by schema.businessPartitionFields
+  for partition in partitions:
+    choose greatest RunDateTime then greatest lexicographic CaseID
+    within the chosen run, group by exactSourceRowIdentityFields
+    byte-identical duplicates: dedupe and count
+    same exact source-row identity with differing business values: unconditional failure
+    preserve UTC instant, NZ local time, offset and DST fold
+
+  for each observed POC at each instant:
+    effective = NSP rows where composite ID/POC are nonempty and instant lies in
+      [effectiveFrom,effectiveUntil), resolving date+trading-period boundaries
+    require current/effective flags consistent for selected mapping release
+    if none: exclude no_effective_nsp
+    if coordinates disagree and no exact authority rule selects one: exclude coordinate_conflict
+    if coordinate parse/range/transform invalid: exclude invalid_coordinate
+    else transform EPSG:2193 -> EPSG:4326 with pinned version
+      assign Stats GeographyId by LOG-GEO inclusive point-in-polygon;
+      boundary tie chooses lexicographically smallest ID and records tie;
+      no match excludes stats_boundary_unmatched
+    retain each NSP networkReportingRegionId as separate network dimension
+
+  for each interval+POC:
+    loadRow = unique selected UnitCode=N/A row
+    generationRows = unique selected non-N/A UnitCode rows
+    load = loadRow.LoadMegawatts or missing
+    price = loadRow.DollarsPerMegawattHour or missing
+    generation = sum generationRows.GenerationMegawatts
+  for each interval+Stats geography:
+    load = sum unique present POC loads
+    generation = sum unique unit generation values
+    priceNumerator = sum(load[p]*price[p]) for unique POCs with load>0 and price present
+    denominator = sum(load[p]) for same POCs
+    price = null if denominator==0 else numerator/denominator
+    set capacityInferenceAllowed=false
+
+  eligibleNationalPocs = union of observed POCs with effective non-conflicting NSP mapping
+  eligibleStatsPocs[g] = subset with valid coordinate transform and Stats polygon assignment g
+  coverage.sourceTime = observed expected instants / expected instants
+  coverage.national = observed distinct (instant,eligibleNationalPoc) /
+    (expected instants * eligibleNationalPocs)
+  coverage.statsGeography[g] = observed distinct (instant,eligibleStatsPoc in g) /
+    (expected instants * eligibleStatsPocs[g])
+  assert all denominators and exclusions recorded
+
+  if any qualityPolicy unconditional failure condition occurred: return not_published
+  if all complete thresholds met: return complete
+  if national partial thresholds met:
+    suppress each geography below per-geography partial threshold
+    if no geography remains: return not_published
+    return partial with exact qualification and suppressed IDs
+  return not_published below_partial_threshold
+
+function chooseRollingWindow(latestPublishedDay, policy): WindowOutcome
+  for back in 0..policy.maximumBackwardSearchDays:
+    end = latestPublishedDay - back days, exclusive at next NZ midnight
+    start = same NZ calendar date 12 months earlier
+    outcome = compileEmi([start,end), ...)
+    if outcome complete: return outcome
+    retain newest partial candidate for labelled fallback
+  return newest partial if policy permits; otherwise not_published(no_window_within_search_horizon)
+```
+
+Source-time, eligible-POC and geography denominators are independent. A partial geography is never relabelled complete because national coverage passes. Power remains MW per instant; no sum across instants becomes power/capacity/headroom. Energy, if displayed, integrates MW by actual interval duration and is labelled MWh. Balanced v1 uses complete thresholds `0.90/0.85/0.70`, partial thresholds `0.75/0.65/0.50`, and a 45-day backward search.
+
+### LOG-DOC-001A - extraction verification and case construction
+
+```text
+function prepareDocument(bytes, metadata, extractor): PreparedDocument
+  verify content hash and allowed document type; extract under resource cap
+  for each proposed statement:
+    require exactly one nonempty PageLocatorV2 variant
+    create candidate with document hash, statement hash, method/version and proposed type
+    create no evidence/edge IDs
+  curator action accept/accept_with_correction/reject creates immutable verification receipt
+  only curator_verified statements may compile EvidenceRecordV2/Facts/Edges
+  rejected/candidate statements remain visibly non-authoritative and edge-free
+
+function buildTimeline(verifiedEvents, evidenceSnapshot): Timeline
+  require every prepared event has nonempty evidenceIds
+  resolve current qualifying project_event_date facts from the same snapshot
+  if none: ProjectEventDateV2.undated with exact MissingRecords
+  else if exact dates all agree: ProjectEventDateV2.exact with FactIds
+  else if exact/range values have nonempty intersection:
+    ProjectEventDateV2.range using exact intersection and FactIds
+  else: ProjectEventDateV2.disputed with every candidate date/range,
+    nonempty FactIds and ConflictIds; sort after exact/ranged peers by eventId
+
+function freezeProjectCaseV2(parts, snapshot, release): ProjectCaseV2
+  require exactly ten CaseSection keys and every event is ProjectEventV2
+  require CaseSourceCounts invariant and distinct community/mana-whenua/missing-voice records
+  resolve exact trusted statement, unresolved-question, company identity and claim-role records;
+    require every ID/hash/locator uses the same immutable EvidenceSnapshot closure
+  bind evidence/graph/catalog/release hashes, canonicalize and hash; reject partial trusted text
+
+function countCaseSources(snapshot, requiredSlots): CaseSourceCounts
+  for each evidence record exactly once:
+    if AI candidate: aiCandidate++
+    else if developer claim: developerClaim++
+    else switch frozen freshness state:
+      stale -> staleOther++
+      unknown -> unknownOther++
+      future_invalid -> futureInvalidOther++
+      forecast_expired -> forecastExpiredOther++
+      current|forecast_valid -> currentOther++ when authorityClass is
+        qualifying_authoritative, else nonqualifyingOther++
+  assert totalEvidenceRecords == sum of all eight mutually exclusive buckets
+  missing = count required slots lacking an authorized record
+  conflicting = count conflict records
+```
+
+Case files instantiate all ten fixed sections, each `complete|partial|missing`. Community records, mana whenua records and missing voices remain distinct nodes and views.
+
+### LOG-VIS-001A - trusted resolver and one semantic accessible view
+
+```text
+function resolveVisual(specBytes, projection, dataRegistry): VisualOutcomeV2
+  strict-decode VisualSpecV2; reject oversize, unknown fields/primitives/bindings/
+    annotations/filters/executable content
+  if spec.visualKind == data_visual:
+    require primitive is not narrative_panel and bindings are nonempty
+    evaluate only the closed non-recursive VisualFilterV2; require depth=1,
+      nodeCount=predicates.length in 1..20 and total nodes <=21
+    resolve every fieldSchemaHash; require exact scalar-kind/unit compatibility,
+      numeric/local-date-only ordering/ranges, enum-only one_of, minimum <= maximum and
+      both-inclusive when minimum == maximum
+    evaluate a missing/null referenced value as false for that predicate, then apply
+      ordinary all|any combination; never coerce null to zero/empty text
+    reject HTML, URLs, expressions, script-like text, unknown operators, coercion,
+      empty ranges or unit conversion inside a filter
+    for every series:
+      resolve only declared trusted data IDs
+      require nonempty lineage with current content hashes
+    for every annotation:
+      trusted_data_point -> resolve authorized TypedScalar and lineage
+      source_statement -> validate citations and EvidenceIds
+      model_inference -> require visible label, uncertainty and basis data lineage
+      uncertainty -> require visible label, affected series and lineage
+      otherwise reject unsupported factual text
+  if spec.visualKind == narrative_panel:
+    require primitive == narrative_panel and no bindings/series fields are present
+    for every block require nonempty citation/evidence IDs, resolve each against the
+      projection/evidence snapshot, reject forged/missing citations and attach lineage
+  construct ResolvedVisualModelV2 and complete VisualExecutionReceipt
+  construct one AccessibleVisualEquivalent with label, summary, table, sources, disclaimer
+  return VisualOutcomeV2 complete containing model, receipt and equivalent
+  render screen from outcome.equivalent; copy/export serialize the same semantic object
+  assert semantic hashes equal across screen/copy/export
+  on any failure return VisualOutcomeV2 failed with trusted fallback/equivalent and typed reason
+```
+
+Endpoint and model are sanitized labels, never URLs or keys. Regeneration always produces a new receipt/spec hash and never replaces the prior deterministic result snapshot.
+
+### LOG-ROUTE-001 - history, deep links and guided education
+
+```text
+function serializeRoute(route, release): WorkflowState
+  keep only version, typed route, immutable hashes and optional draft ID/revision
+  reject secret, free-text answer, identity/opinion or whole mutable payload
+  canonicalize and hash
+
+function restoreRoute(serialized): RestorationOutcome
+  strict-decode version and route variant
+  resolve every immutable ID by content hash
+  for map/project routes resolve feature + layer/statement/company/catalog records from retained pack
+  for case routes resolve ProjectCaseV2 plus embedded catalog/graph/community/question/
+    missing-voice/statement/company/claim closure
+  for brief routes strict-load the ImpactBriefV2 envelope, trusted text/company closure and snapshots
+  for evidence routes resolve EvidenceSnapshot plus strict locator/graph/text/company closure
+  if current release differs: preserve immutable view and show version notice
+  if mutable draft exists: restore via LOG-SAVE/VAL renormalization
+  if missing/unsupported: route to map with exact non-destructive explanation
+
+function advanceEducation(state, answer): GuidedEducationState
+  accept only controlled relationship, region-level location and issue choices
+  display source-linked raw values before an explanation
+  ask what remains unclear using controlled answer
+  retain state only in memory; destroy on completion/navigation/reload
+```
+
+Back/forward replay restoration, not application-side mutation. Deep links never embed credential/configuration, unsaved free text or user identity.
+
+### LOG-REGISTRY-001 - exact sources and capability fallbacks
+
+```text
+function validateFirstSourceRegistry(entries): BuildOutcome
+  expected = exact 17 canonical source names in CTR-020
+  require set(entries.canonicalName) == expected and no duplicates
+  require every shippedState in exact {enabled,prepared-only,link-only,agent-only,disabled}
+  require exact legal shippedState/retrievalMode pair and every reason nonempty
+  require every entry declares authority purposes, supported fields, retrieval/auth/CORS,
+    methods/origins, licence/attribution/purpose, quota/cadence, spatial/temporal
+    resolution and fallback exactly as applicable
+  enabled entry must pass schema/route/licence/freshness/CORS adapter fixture
+  require every DataPackManifestV2 source binding matches registry source/licence/purpose
+  disabled entry must pass a fixture proving its stated reason and UI label
+  fail release on any mismatch
+
+function capabilityPlan(detected): CapabilityPlan
+  no WebGL -> accessible list + static bounded preview
+  no IndexedDB -> session draft + export guidance
+  no persistent CryptoKey -> explicit disclosed-local/session choice
+  no BroadcastChannel -> clients.matchAll/postMessage
+  no Clipboard -> selection/manual copy
+```
+
+Release tests run current Chromium, Firefox and WebKit desktop plus mobile-equivalent and real-device smoke. Support is not waived because a CI host lacks a feature; the fallback is exercised instead.
+
+### Resource enforcement and updated invariants
+
+Every producer checks CTR-021 and CTR-015A budgets. Downloads and compiler rows are streamed and aborted at the first byte/row beyond the cap. Worker queue overflow rejects newest requests with stable retry guidance. Cache eviction is generation-aware. Storage cap failures never truncate, overwrite or compact. Add these invariants:
+
+| ID | Invariant |
+|---|---|
+| INV-029 | Flexibility physical feasibility and optimality are exact rational primal/dual facts; audit tolerance cannot create capacity. |
+| INV-030 | Deterministic assessments consume only closed decisive-input references: authorized FactIds from one immutable evidence snapshot, normalized scenario OriginProofs, and calculation/flexibility trace refs. |
+| INV-031 | A connector worker never calls the analysis worker and never follows redirects. |
+| INV-032 | Same persistence operation ID with a different command hash is a conflict, never a replay. |
+| INV-033 | No service-worker candidate replaces an active generation while any old-generation client remains open. |
+| INV-034 | Every rendered visual fact has typed lineage and identical semantic content across screen, copy and export. |
+| INV-035 | Every public EMI statistic carries independent source-time, national POC and Stats-geography coverage. |
+| INV-036 | Every locator, layer, statement, unresolved-question, missing-voice, company/claim-role, catalog, pack, evidence edge/graph, community, case and brief ID/hash resolves to one strict effective V2 record in the retained release/device generation; question scope/subject pairs use the closed matrix and no brief hash is a question subject. |
+| INV-037 | A sensitive endpoint exposes only normalized origin, sanitized label and random opaque route-policy IDs; path/query bytes remain vault-only and never affect public hashes. |
+| INV-038 | Cancellation names one exact original worker/correlation tuple; every external model/research/tool request has an exact destination/content acceptance, actual contacts are separately receipted, each enabled tool has one request-frozen read-only route, and every agent request enforces all declared token, request, call, time, retry, concurrency, citation and research ceilings. |
+
+### v0.10 review-closure traceability
+
+| Review finding | Logic |
+|---|---|
+| LR3-001 | LOG-FLX-001A |
+| LR3-002/003 | LOG-EVD-001A, LOG-ASM-001A |
+| LR3-004 | LOG-SITE-001A and approved separate-group map policy |
+| LR3-005/006 | LOG-AGENT-001A, LOG-CONN-001A |
+| LR3-007 | LOG-BOOT/PACK-001A |
+| LR3-008 | LOG-SAVE-001A |
+| LR3-009 | LOG-OFF-001A |
+| LR3-010 | LOG-EMI-001A and approved Balanced quality policy |
+| LR3-011 | LOG-DOC-001A |
+| LR3-012 | LOG-VIS-001A |
+| LR3-013 | LOG-ROUTE-001, LOG-REGISTRY-001, resource enforcement |
+| G3V05-001 | LOG-ASM-001A total category/overall producers |
+| G3V05-002 | LOG-SITE-001A five outcomes, three groups and user confirmation |
+| G3V05-003 | LOG-WORKER-001A closed coordinator graph |
+| G3V05-004 | LOG-WORKER/AGENT/SAVE/VIS strict union dispatch |
+| G3V05-005 | LOG-AGENT-001A and LOG-SAVE-001A atomic tool completion |
+| G3V05-006 | LOG-SAVE-001A inspect/refresh research lifecycle |
+| G3V05-007 | LOG-DOC-001A eight-bucket source counting |
+| G3V05-008 | LOG-VIS-001A discriminated narrative resolution |
+| G3V06-001 | LOG-GEO/SITE/WORKER/CONN closed operation graph |
+| G3V06-002 | LOG-CONN normalized draft, capability, first-success persistence and restore |
+| G3V06-003 | LOG-SAVE connector fetch -> analysis compile -> atomic research record |
+| G3V06-004 | LOG-SITE missing/partial preservation and observed-only failure |
+| G3V06-005 | LOG-AGENT/SAVE durable aliases with unique child operation IDs |
+| G3V06-006 | Closed JSON roots plus separately guarded structured-clone contract |
+| G3V06-007 | LOG-VIS exact non-recursive filter boundary and scalar semantics |
+| G3V07-001 | LOG-PRODUCT-001B plus closed WORKER/PACK/SAVE/ROUTE/REGISTRY producers |
+| G3V07-002 | LOG-CONN public-path versus sensitive-vault-route handling and canary-free hashes |
+| G3V07-003 | LOG-WORKER exact cancellation target/ack plus LOG-AGENT complete limit guards/counters |
+| G3V08-001 | LOG-WORKER command-family cancellation plus LOG-AGENT final/queued cancelled receipts |
+| G3V08-002 | LOG-PRODUCT destination disclosures, LOG-AGENT registry/authorization handshake and LOG-CONN guarded binding |
+| G3V08-003 | LOG-CONN per-connector journal plus LOG-SAVE closed selected/all clear variants |
+| G3V08-004 | LOG-EVD/PRODUCT/PACK/DOC strict locator and complete layer/text/company product closure |
+| G3V09-001 | LOG-AGENT common outbound authorization, request-frozen tool routes and separate accepted/contacted receipts |
+| G3V09-002 | LOG-AGENT pre-allocation alias lookup, bounded request classifications and one receipt per new logical call |
+| G3V09-003 | LOG-PRODUCT closed question matrix and one-pass brief hashing without brief subjects |

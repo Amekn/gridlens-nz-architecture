@@ -1,19 +1,40 @@
-# GridLens NZ — Architecture 1
+# GridLens NZ — Infrastructure impact atlas
 
-Architecture and logic-design workspace for the browser-first GridLens NZ concept.
+GridLens NZ is a map-first decision-support prototype for exploring the infrastructure impact of large compute loads across Aotearoa New Zealand. Users define a scenario, select a candidate directly on the map, inspect deterministic screening results, and optionally ask a source-aware AI agent to explain trade-offs.
 
-> **Work in progress:** the product scope was expanded on 6 August 2026 to include user-supplied OpenAI-compatible endpoints, web-index MCP research, broader New Zealand map coverage, and live/licensed data integrations. This reopened the requirements, architecture, and logic gates. The documents in this repository capture the current design history and may change.
+This directory contains Architecture 1 only: the approved browser-first hybrid design.
 
-## Start here
+## Run the demo
 
-- [Idea brief](.autoforge/00-idea-brief.md)
-- [Requirements](.autoforge/01-requirements.md)
-- [Usage definition](.autoforge/02-usage-definition.md)
-- [Architecture options](.autoforge/03-architecture-options.md)
-- [Selected architecture](.autoforge/04-selected-architecture.md)
-- [Contracts](.autoforge/05-contracts.md)
-- [Logic map](.autoforge/06-logic-map.md)
-- [Test strategy](.autoforge/07-test-strategy.md)
-- [Independent logic review](.autoforge/08-logic-review.md)
+```powershell
+npm install
+npm run dev
+```
 
-The `.autoforge/state.json` file records gate status and design decisions. No application implementation is included yet.
+Open `http://localhost:3000`.
+
+For a production check:
+
+```powershell
+npm test
+```
+
+## Two-minute presentation path
+
+1. Change the 65 MW scenario and show the annual-energy and flexible-load calculations update.
+2. Select Auckland, Waikato, then a purple candidate directly on the whole-NZ map to show the three separate assessment groups.
+3. Open **Evaluation** to explain the five transparent impact lenses and the prepared-evidence disclaimer.
+4. Open **Connectors**, enter an OpenAI-compatible endpoint and optional Tavily key, then use **Generate insight**.
+5. Refresh the page and show that encrypted connector settings remain available on the same device.
+
+## Trust boundaries
+
+- Deterministic rules own site outcomes; the LLM cannot change them.
+- Credentials are encrypted in IndexedDB with a non-extractable device key and are cached only after a successful endpoint test.
+- Requests go directly from the browser to CORS-enabled endpoints; no application relay receives the keys.
+- Tavily research is restricted to an allow-list of New Zealand public-sector and electricity-system domains.
+- Demonstration values are illustrative, not live grid capacity offers or development approvals.
+
+## Design record
+
+The approved requirements, usage definition, selected architecture, contracts, logic map, test strategy, independent logic review, and implementation plan are under [`.autoforge`](.autoforge/).

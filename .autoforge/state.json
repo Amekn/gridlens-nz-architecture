@@ -1,33 +1,64 @@
 {
   "schema_version": 1,
   "project": "GridLens NZ \u2014 Design 1 Browser-first",
-  "current_phase": "requirements",
+  "current_phase": "implementation",
   "created_at": "2026-08-06T00:35:28+00:00",
-  "updated_at": "2026-08-06T04:43:46+00:00",
+  "updated_at": "2026-08-06T19:37:29+00:00",
   "gates": {
     "requirements": {
-      "status": "pending",
-      "actor": null,
+      "status": "approved",
+      "actor": "user",
       "independent": false,
-      "evidence": null,
-      "recorded_at": null,
-      "artifacts": []
+      "evidence": "Existing explicit Gate 1 v0.4 approval; re-recorded after status/companion/gate wording cleanup only, with requirement semantics unchanged.",
+      "recorded_at": "2026-08-06T16:29:58+00:00",
+      "artifacts": [
+        {
+          "path": ".autoforge/01-requirements.md",
+          "sha256": "d9796b741e2322798ed0b8a8b1ab212ec670055c16660938e8edb475722ad5b2"
+        },
+        {
+          "path": ".autoforge/02-usage-definition.md",
+          "sha256": "04d2325936ba5b02f2597b3dd0f7c1ac2705f196ae5acd7582964370d617bcf6"
+        }
+      ]
     },
     "architecture": {
-      "status": "pending",
-      "actor": null,
+      "status": "approved",
+      "actor": "user",
       "independent": false,
-      "evidence": null,
-      "recorded_at": null,
-      "artifacts": []
+      "evidence": "Existing explicit Gate 2 v0.3 Option A approval; selected architecture semantics unchanged by Gate 3 logic reconciliation.",
+      "recorded_at": "2026-08-06T16:29:58+00:00",
+      "artifacts": [
+        {
+          "path": ".autoforge/04-selected-architecture.md",
+          "sha256": "c29a9218229ab3434446fd231085496a49762fdb650ceb62404ab0d1ef8b04f3"
+        }
+      ]
     },
     "logic": {
-      "status": "pending",
-      "actor": null,
-      "independent": false,
-      "evidence": null,
-      "recorded_at": null,
-      "artifacts": []
+      "status": "validated",
+      "actor": "/root/logic_reviewer_v05",
+      "independent": true,
+      "evidence": "Independent Gate 3 v0.10 review verdict validated; all 101 requirements, AC-001..AC-026, INV-001..INV-038 and LR3/G3V05-G3V09 findings closed; exact hashes and secret/public/clone/git checks recorded in 08-logic-review.md.",
+      "recorded_at": "2026-08-06T19:37:29+00:00",
+      "artifacts": [
+        {
+          "path": ".autoforge/05-contracts.md",
+          "sha256": "bf0b8cc5295872f3bbfee6144c648ad43e9b17b8988c394681a6411b3039c98a"
+        },
+        {
+          "path": ".autoforge/06-logic-map.md",
+          "sha256": "6a417afc32803439f94dc968d343b7e72b0a09334de7027b43e95862adbc7749"
+        },
+        {
+          "path": ".autoforge/07-test-strategy.md",
+          "sha256": "77dd34890a87986bf27a2d1c5638dcebfbfc7bc4055bafd62195cb7f41a167b2"
+        },
+        {
+          "path": ".autoforge/08-logic-review.md",
+          "sha256": "5c9e68391df6c650abe49e871d5ff6ef967385a13364ce4010c00f9133084c8f"
+        }
+      ]
     },
     "qa": {
       "status": "pending",
@@ -140,33 +171,66 @@
       "phase": "requirements",
       "owner": "user",
       "question": "Approve session-only BYOK credentials, direct browser-to-CORS-enabled OpenAI-compatible endpoint calls, no key persistence/app relay, and remote HTTP MCP limited to allowlisted search/research tools with Tavily as the tested preset?",
-      "status": "open",
-      "resolution": null,
+      "status": "resolved",
+      "resolution": "Credentials must persist across refresh after first use in device-local browser storage; calls remain direct from browser to CORS-enabled OpenAI-compatible and remote MCP endpoints; credentials must be masked, never logged/exported/cloud-synced, and have explicit per-connector clear controls.",
       "created_at": "2026-08-06T04:43:45+00:00",
-      "resolved_at": null,
-      "resolved_by": null
+      "resolved_at": "2026-08-06T05:10:18+00:00",
+      "resolved_by": "user"
     },
     {
       "id": "g1-d07-ai-authority",
       "phase": "requirements",
       "owner": "user",
       "question": "Approve LLM/MCP as evidence discovery, extraction, and commentary only, with deterministic validated calculations and assessment outcomes remaining authoritative?",
-      "status": "open",
-      "resolution": null,
+      "status": "resolved",
+      "resolution": "Approved LLM/MCP agent throughout the product while deterministic validated calculations and assessments remain authoritative; add a prompt workspace for user-led research/analysis and dynamically generated visualisations.",
       "created_at": "2026-08-06T04:43:46+00:00",
-      "resolved_at": null,
-      "resolved_by": null
+      "resolved_at": "2026-08-06T05:10:18+00:00",
+      "resolved_by": "user"
     },
     {
       "id": "g1-d08-nz-data-coverage",
       "phase": "requirements",
       "owner": "user",
       "question": "For v1, should all NZ regions be selectable while Southland/Waikato/Auckland retain full quantitative support, other regions show limited/incomplete evaluation, EM6 anonymous feeds are live context, and LAWA uses licensed versioned downloads rather than scraping?",
-      "status": "open",
-      "resolution": null,
+      "status": "resolved",
+      "resolution": "All of New Zealand must be selectable and supported rather than limiting full evaluation to Southland, Waikato, and Auckland; retain EM6 anonymous feeds and use multiple stronger free public sources where available.",
       "created_at": "2026-08-06T04:43:46+00:00",
-      "resolved_at": null,
-      "resolved_by": null
+      "resolved_at": "2026-08-06T05:10:19+00:00",
+      "resolved_by": "user"
+    },
+    {
+      "id": "g2-d02-architecture-v03",
+      "phase": "architecture",
+      "owner": "user",
+      "question": "Approve Architecture v0.3 Option A: a Sites React shell with one deterministic analysis/evidence Web Worker, one connector/agent Web Worker, direct CORS-only BYOK/MCP calls, a separate browser credential vault and transactional IndexedDB stores, release-time public-data compilation into immutable packs, trusted visual components, and versioned offline caching?",
+      "status": "resolved",
+      "resolution": "Approved Gate 2 architecture v0.3 Option A exactly as documented in .autoforge/04-selected-architecture.md.",
+      "created_at": "2026-08-06T06:00:03+00:00",
+      "resolved_at": "2026-08-06T06:03:10+00:00",
+      "resolved_by": "user"
+    },
+    {
+      "id": "g3-emi-quality",
+      "phase": "logic",
+      "owner": "user",
+      "question": "Approve the numeric EMI complete/partial/not-published coverage thresholds, unconditional failure conditions, and backward search horizon.",
+      "status": "resolved",
+      "resolution": "Approved Balanced v1: complete >=90% source-time, >=85% national POC and >=70% per published geography; partial >=75%/>=65%/>=50%; 45-day backward search; specified unconditional failures.",
+      "created_at": "2026-08-06T07:52:19+00:00",
+      "resolved_at": "2026-08-06T16:05:01+00:00",
+      "resolved_by": "user"
+    },
+    {
+      "id": "g3-site-grouping",
+      "phase": "logic",
+      "owner": "user",
+      "question": "Choose separate visible classification groups with ranking only within each group, or an explicit cross-class workflow order.",
+      "status": "resolved",
+      "resolution": "Approved separate classification groups with ranking only within each group; whole-NZ map-based selection, not checkbox or drop-down geography/site selection.",
+      "created_at": "2026-08-06T07:52:19+00:00",
+      "resolved_at": "2026-08-06T16:05:01+00:00",
+      "resolved_by": "user"
     }
   ],
   "history": [
@@ -456,6 +520,183 @@
         "requirements",
         "architecture",
         "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T05:10:18+00:00",
+      "action": "decision-resolved",
+      "id": "g1-d06-byok-mcp-security",
+      "by": "user"
+    },
+    {
+      "at": "2026-08-06T05:10:18+00:00",
+      "action": "decision-resolved",
+      "id": "g1-d07-ai-authority",
+      "by": "user"
+    },
+    {
+      "at": "2026-08-06T05:10:19+00:00",
+      "action": "decision-resolved",
+      "id": "g1-d08-nz-data-coverage",
+      "by": "user"
+    },
+    {
+      "at": "2026-08-06T05:33:08+00:00",
+      "action": "requirements-draft-revised",
+      "version": "0.4",
+      "actor": "/root",
+      "sources_added": [
+        "C:/Users/kang/Downloads/GridLens_NZ_Hackathon_Transcript.md",
+        "C:/Users/kang/Downloads/Description.md",
+        "Electricity Authority EMI structured datasets and NSP mapping"
+      ],
+      "artifacts": [
+        ".autoforge/00-idea-brief.md",
+        ".autoforge/01-requirements.md",
+        ".autoforge/02-usage-definition.md"
+      ],
+      "gate": "requirements",
+      "gate_status": "pending"
+    },
+    {
+      "at": "2026-08-06T05:49:49+00:00",
+      "action": "gate-recorded",
+      "gate": "requirements",
+      "result": "approved",
+      "actor": "user",
+      "invalidated": [
+        "architecture",
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T06:00:03+00:00",
+      "action": "decision-added",
+      "id": "g2-d02-architecture-v03",
+      "phase": "architecture",
+      "owner": "user",
+      "invalidated": [
+        "architecture",
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T06:03:10+00:00",
+      "action": "decision-resolved",
+      "id": "g2-d02-architecture-v03",
+      "by": "user"
+    },
+    {
+      "at": "2026-08-06T06:03:10+00:00",
+      "action": "gate-recorded",
+      "gate": "architecture",
+      "result": "approved",
+      "actor": "user",
+      "invalidated": [
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T07:52:19+00:00",
+      "action": "decision-added",
+      "id": "g3-emi-quality",
+      "phase": "logic",
+      "owner": "user",
+      "invalidated": [
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T07:52:19+00:00",
+      "action": "decision-added",
+      "id": "g3-site-grouping",
+      "phase": "logic",
+      "owner": "user",
+      "invalidated": [
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T15:56:04+00:00",
+      "action": "gate-recorded",
+      "gate": "requirements",
+      "result": "approved",
+      "actor": "user",
+      "invalidated": [
+        "architecture",
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T15:56:04+00:00",
+      "action": "gate-recorded",
+      "gate": "architecture",
+      "result": "approved",
+      "actor": "user",
+      "invalidated": [
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T16:05:01+00:00",
+      "action": "decision-resolved",
+      "id": "g3-emi-quality",
+      "by": "user"
+    },
+    {
+      "at": "2026-08-06T16:05:01+00:00",
+      "action": "decision-resolved",
+      "id": "g3-site-grouping",
+      "by": "user"
+    },
+    {
+      "at": "2026-08-06T16:29:58+00:00",
+      "action": "gate-recorded",
+      "gate": "requirements",
+      "result": "approved",
+      "actor": "user",
+      "invalidated": [
+        "architecture",
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T16:29:58+00:00",
+      "action": "gate-recorded",
+      "gate": "architecture",
+      "result": "approved",
+      "actor": "user",
+      "invalidated": [
+        "logic",
+        "qa",
+        "delivery"
+      ]
+    },
+    {
+      "at": "2026-08-06T19:37:29+00:00",
+      "action": "gate-recorded",
+      "gate": "logic",
+      "result": "validated",
+      "actor": "/root/logic_reviewer_v05",
+      "invalidated": [
         "qa",
         "delivery"
       ]
