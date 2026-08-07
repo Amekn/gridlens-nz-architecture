@@ -57,6 +57,15 @@ const OUTCOME_LABELS: Record<SiteDomainOutcome, string> = {
   excluded: "Excluded",
 };
 
+const SOURCE_FAMILIES = [
+  ["Electricity Authority / EMI", "Prepared adapter", "Generation, demand, node mapping"],
+  ["EM6", "Live-capable", "Grid and wind indicators"],
+  ["LAWA", "Live-capable", "Freshwater and environmental observations"],
+  ["Stats NZ + LINZ", "Prepared core", "Boundaries, population and geography"],
+  ["Transpower", "Prepared core", "Network assets and context"],
+  ["Tavily / remote MCP", "Agent-only", "Current web evidence candidates"],
+] as const;
+
 type CategoryStatus = "low" | "moderate" | "high" | "insufficient";
 
 type CategoryView = {
@@ -383,7 +392,7 @@ export function GridLensApp() {
           <span className="asof">As of 01 Aug 2026</span>
         </div>
         <nav className="top-actions" aria-label="Application tools">
-          <button className="quiet-button" onClick={() => setSourcesOpen(true)}><Database size={16} /> Sources <span>17</span></button>
+          <button className="quiet-button" onClick={() => setSourcesOpen(true)}><Database size={16} /> Sources <span>{SOURCE_FAMILIES.length}</span></button>
           <button className="quiet-button" onClick={() => setSettingsOpen(true)}>
             <Network size={16} /> Built-in AI <i className={`status-light ${connectionStatus}`} />
           </button>
@@ -609,16 +618,9 @@ export function GridLensApp() {
         <div className="modal-backdrop" role="presentation">
           <section className="modal-card sources-modal" role="dialog" aria-modal="true" aria-labelledby="sources-title">
             <button className="modal-close" onClick={() => setSourcesOpen(false)} aria-label="Close source register"><X /></button>
-            <div className="modal-heading"><div className="modal-icon"><Database /></div><div><span className="eyebrow">Evidence register</span><h2 id="sources-title">17 source families</h2><p>Prepared, live-capable, link-only and agent-only sources stay visibly distinct.</p></div></div>
+            <div className="modal-heading"><div className="modal-icon"><Database /></div><div><span className="eyebrow">Evidence register</span><h2 id="sources-title">{SOURCE_FAMILIES.length} source families</h2><p>Prepared, live-capable, link-only and agent-only sources stay visibly distinct.</p></div></div>
             <div className="source-list">
-              {[
-                ["Electricity Authority / EMI", "Prepared adapter", "Generation, demand, node mapping"],
-                ["EM6", "Live-capable", "Grid and wind indicators"],
-                ["LAWA", "Live-capable", "Freshwater and environmental observations"],
-                ["Stats NZ + LINZ", "Prepared core", "Boundaries, population and geography"],
-                ["Transpower", "Prepared core", "Network assets and context"],
-                ["Tavily / remote MCP", "Agent-only", "Current web evidence candidates"],
-              ].map(([name, status, detail]) => <div className="source-row" key={name}><div className="source-icon"><Database size={16} /></div><span><strong>{name}</strong><small>{detail}</small></span><em>{status}</em><ExternalLink size={14} /></div>)}
+              {SOURCE_FAMILIES.map(([name, status, detail]) => <div className="source-row" key={name}><div className="source-icon"><Database size={16} /></div><span><strong>{name}</strong><small>{detail}</small></span><em>{status}</em><ExternalLink size={14} /></div>)}
             </div>
             <div className="privacy-callout amber"><AlertTriangle size={17} /><span><strong>Demo evidence boundary</strong><small>Map values in this build are illustrative prepared fixtures, clearly separated from future live adapters.</small></span></div>
           </section>

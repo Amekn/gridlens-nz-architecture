@@ -22,6 +22,7 @@ test("server-renders the GridLens NZ demo shell", async () => {
   assert.match(html, /Set the infrastructure scenario/);
   assert.match(html, /Prepared demo evidence/);
   assert.match(html, /Accessible candidate site list/);
+  assert.match(html, /Sources <span>6<\/span>/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Starter Project/);
 });
 
