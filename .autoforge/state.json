@@ -3,7 +3,7 @@
   "project": "GridLens NZ \u2014 Design 1 Browser-first",
   "current_phase": "complete",
   "created_at": "2026-08-06T00:35:28+00:00",
-  "updated_at": "2026-08-07T02:02:30+00:00",
+  "updated_at": "2026-08-07T02:03:57+00:00",
   "gates": {
     "requirements": {
       "status": "approved",
@@ -78,11 +78,11 @@
       "actor": "/root",
       "independent": false,
       "evidence": "Sites production version 8 deployed from verified commit aa0ed881956ecc2918a70cf5efb9634ac94562a2; live smoke test passed with zero browser errors.",
-      "recorded_at": "2026-08-07T02:02:30+00:00",
+      "recorded_at": "2026-08-07T02:03:57+00:00",
       "artifacts": [
         {
           "path": ".autoforge/11-delivery-report.md",
-          "sha256": "4cb3566bc2121525ca1675ab0fbd0de9f5cbba5438c79bd7c183bdc7ea7382aa"
+          "sha256": "66e6ec95cb0c64ab5afd85ca7ba3fbb871c7935c7a4c2234557eccce351395ca"
         }
       ]
     }
@@ -1007,6 +1007,14 @@
     },
     {
       "at": "2026-08-07T02:02:30+00:00",
+      "action": "gate-recorded",
+      "gate": "delivery",
+      "result": "passed",
+      "actor": "/root",
+      "invalidated": []
+    },
+    {
+      "at": "2026-08-07T02:03:57+00:00",
       "action": "gate-recorded",
       "gate": "delivery",
       "result": "passed",
