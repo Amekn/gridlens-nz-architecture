@@ -227,3 +227,25 @@
 | g1-d08 | Support all New Zealand geographies, retain EM6, and use multiple stronger free public sources where available. |
 
 Version 0.5 reopens Gate 1 because the user changed credential ownership and the trust boundary after the v0.4 approval. The map requirements also now make polygon selection, initial marker visibility, and working interaction explicit release criteria.
+
+## Approved interaction amendment v0.13 — scenario-first regional evaluation
+
+**Approval evidence:** On 07 Aug 2026 the user enumerated the following seven interaction changes and explicitly said, “Please proceed to fix these issues.” These requirements supersede conflicting presentation details only; the deterministic assessment model, evidence boundary, security boundary, and selected Option A architecture remain unchanged.
+
+| ID | Observable requirement | Priority | Acceptance summary |
+|---|---|---|---|
+| FR-UX-001 | The top bar shall omit the “Prepared demo evidence / As of” context element. Evidence qualification remains available where results and sources are explained. | Must | Neither phrase is rendered in the top bar; result/source qualification remains present. |
+| FR-UX-002 | Reader-facing assessment groups shall use plain-language labels and short explanations: “Meets scenario”, “More evidence needed”, and “Does not meet scenario”. Internal five-outcome and three-group values remain unchanged. | Must | The scenario key explains each color without exposing internal enum wording. |
+| FR-UX-003 | Reader-facing selection copy shall describe a selected **region**, not a selected candidate, while retaining the internal candidate record needed for deterministic evaluation. | Must | Selecting any prepared regional marker or polygon displays “Selected region” plus the canonical region name. |
+| FR-UX-004 | Reader-facing names shall not append “demonstration zone” to a region/place label. | Must | Map, scenario list, selection card, progress, and result title omit that suffix. |
+| FR-UX-005 | Canonical Stats NZ RegionIds remain internal and stable, but the accessible region picker shall display region names without numeric prefixes or outcome/status suffixes. | Must | The list has all 17 entries in canonical order; readers do not see a misleading 09-to-12 numbering gap. |
+| FR-UX-006 | Region rows and selected-region copy shall not append technical domain-outcome tags such as “specialist assessment required”, “infrastructure upgrade required”, or “insufficient evidence”. A result may instead give a plain-language assessment summary and evidence reason away from the name. | Must | Region names stand alone; the result explanation remains honest and inspectable. |
+| FR-UX-007 | Evaluation shall be reachable only through a completed, valid scenario and a selected prepared region. The two-tab Scenario/Evaluation switch shall be removed. Starting evaluation shall show an accessible staged transition (“Collecting region information”, “Calculating scenario impacts”, “Synthesising evaluation”) before results; changing the scenario or region invalidates the prior result and returns to scenario entry. | Must | Direct tab/result bypass is impossible; invalid/incomplete state disables evaluation with guidance; reduced-motion users receive the same states without prolonged animation. |
+
+| ID | Criterion | Linked requirements |
+|---|---|---|
+| AC-027 | The top context banner and two-tab switch are absent; all reader-facing regional selection and list labels are suffix-free, code-free, and outcome-tag-free. | FR-UX-001, FR-UX-003–006 |
+| AC-028 | The three assessment groups have distinct plain-language names and explanations while internal deterministic group/outcome values and calculations remain unchanged. | FR-UX-002, FR-ASM-001–008 |
+| AC-029 | An incomplete scenario or missing prepared region cannot open results; a valid evaluate action traverses the three announced progress states, then results; scenario/region edits invalidate the result; reduced-motion behavior is bounded. | FR-UX-007, NFR-ACC-001, NFR-REL-001 |
+
+**Resolved policy G3V13-D01:** Option A — back/forward or reload may restore a completed evaluation only after validating a closed receipt that binds the exact scenario fingerprint, region, internal candidate/screening, evidence snapshot, spatial/data release, and deterministic result snapshot. Any missing or mismatched binding falls back to scenario entry with guidance.

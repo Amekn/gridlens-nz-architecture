@@ -2695,3 +2695,187 @@ CTR-037–042 replace the affected v0.12 routines as follows:
 ### Version 0.12.2 storage-root closure
 
 `StoredEnvelopeV3` is the exact CTR-043 live/tombstone union. Storage admission validates the store/payload discriminant, canonical payload hash, revision, timestamps, and absence of all deletion fields on live records or payload fields on tombstones. Legacy values can enter only after a successful named CTR-037 adapter receipt; connector-bearing or unknown-geography payloads quarantine. No generic or arbitrary JSON storage path exists.
+
+## LOG-WORKFLOW-001 — Scenario-first regional evaluation state machine (v0.13)
+
+**Serves:** FR-UX-001–007; AC-027–029; UJ-018.
+
+```text
+type WorkflowState =
+  | { kind: "scenario" }
+  | { kind: "evaluating"; stage: 0 | 1 | 2; runId: integer }
+  | { kind: "results"; runId: integer }
+
+scenarioComplete(s): boolean =
+  trim(s.name) != "" AND every numeric field is finite and in its declared bounds
+  AND s.coolingMethod is one of air/evaporative/direct_liquid/hybrid
+
+canEvaluate = scenarioComplete(currentScenario) AND selectedAssessment exists
+
+startEvaluation():
+  require canEvaluate
+  allocate monotonically increasing runId
+  transition scenario -> evaluating(stage=0, runId)
+  announce stages 0, 1, 2 in order
+  after final stage, transition -> results(runId) only if runId remains current
+
+onScenarioChange() OR onRegionChange():
+  invalidate current runId
+  transition -> scenario
+
+onEditScenario(): transition results -> scenario
+```
+
+| State | Reader-visible panel | Permitted exit |
+|---|---|---|
+| `scenario` | Required fields, calculated demand preview, plain-language group guide, region-only list, gated evaluate action | Valid evaluate action only |
+| `evaluating` | One live region name, three ordered progress stages, accessible live status | Current run completes or selection invalidates it |
+| `results` | Region title, plain-language outcome summary, plots and optional AI workspace | Edit scenario or select/change region |
+
+**Invariants:**
+
+- INV-068: No tab, map-card shortcut, URL/client state, or stale timer can reveal `results` without a successful current `startEvaluation` run.
+- INV-069: Reader-facing region names contain neither canonical RegionId prefixes nor domain-outcome suffixes nor “demonstration zone”; internal candidate IDs and domain outcomes remain unchanged.
+- INV-070: The three presentation groups retain their exact internal values and mapping, but reader labels are fixed to “Meets scenario”, “More evidence needed”, and “Does not meet scenario” with explicit explanatory copy.
+- INV-071: Reduced-motion shortens stage delays but does not skip state announcements or alter evaluation bytes.
+
+### LOG-WORKFLOW-001 revision v0.13.1 — blocker closure
+
+This revision supersedes the earlier v0.13 pseudocode and implements CTR-044.
+
+```text
+deriveEligibility(scenarioInput, selectedRegionId, selectionGeneration, evaluation, release):
+  try normalized = authoritative normalizeScenario(scenarioInput)
+  catch validationError -> invalid_scenario(validationError)
+  if trim(scenarioInput.name) == "" -> invalid_scenario("Enter a scenario name")
+  if normalized.coolingMethod == unknown -> invalid_scenario("Choose a cooling method")
+  matches = evaluation.assessments where canonicalRegionId(candidate.region) == selectedRegionId
+  if matches.length == 0 -> missing_region_binding
+  if matches.length > 1 -> ambiguous_region_binding
+  binding = hash and verify exact candidate screening, evidence and active release closure
+  if generation/hash mismatch -> stale_region_binding
+  return ready(normalized, scenarioFingerprint, binding)
+
+startEvaluation(eligibility):
+  require eligibility.ready
+  cancel prior run resources
+  allocate runId; capture immutable run tuple
+  dispatch start(run)
+  begin deterministic snapshot construction for captured tuple
+  schedule tagged semantic stage events using NORMAL_STAGE_MS=520
+    or REDUCED_STAGE_MS=40
+
+reduce(current, event):
+  stage event -> accept only current.kind=evaluating
+    AND event.runId=current.run.runId
+    AND event.expectedStage=current.stage
+    AND event.nextStage=current.stage+1; else discard
+  analysis_ready -> accept only current matching run and snapshot closure;
+    retain snapshot as pending, never reveal it yet
+  finish -> require matching run, stage=2 and matching pending snapshot;
+    create receipt and enter results
+  invalidate -> cancel every timer/work handle, increment generation,
+    discard pending snapshot, enter scenario with guidance
+  restore -> recompute eligibility and result snapshot from saved scenario/region;
+    validate every receipt binding; exact match enters results,
+    otherwise scenario with restoration guidance
+
+onScenarioChange OR onRegionChange OR onSelectionGenerationChange:
+  dispatch invalidate before accepting the new input
+```
+
+Normal progress reaches the final transition in at most 1,800 ms; reduced-motion in at most 180 ms. The accessible status log retains all three ordered semantic messages so rapid updates do not replace an unannounced stage. `AbortController` plus tagged reducer checks provides cancellation and stale-event safety. No timer itself creates a result.
+
+`evaluation_v1` is the only restorable results route. Back/forward, reload and session restore parse the closed receipt, recompute the current deterministic closure and compare all hashes. Legacy/missing/mismatched routes fall back to `scenario`; arbitrary URL state never admits results.
+
+Additional invariants:
+
+- INV-072: Workflow eligibility is derived from authoritative shipped normalization and an exact sole prepared-region binding; no second numeric/cooling validator exists.
+- INV-073: A result receipt binds scenario, canonical region, selection generation, candidate, screening, evidence, release and successful result snapshot; every mismatch fails closed.
+- INV-074: Every intermediate and terminal event is run-tagged and prior-stage checked; stale callbacks are no-ops.
+- INV-075: Only a validated `evaluation_v1` receipt may restore results. Legacy evaluation routes and incomplete deep links return to scenario entry.
+
+### LOG-WORKFLOW-001 revision v0.13.2 — total shipped boundary
+
+This revision supersedes v0.13.1 and uses CTR-044 v0.13.2.
+
+```text
+deriveEligibility(input, regionId, selectionGeneration, evaluation, release):
+  normalization = normalizeShippedScenarioV1(input)
+  if invalid -> invalid_scenario(normalization.field/message)
+  if trim(original input.name) == "" -> invalid_scenario("Enter a scenario name")
+  if normalization.normalized.coolingMethod == unknown ->
+    invalid_scenario("Choose a cooling method")
+  binding = refineSoleCurrentPreparedRegion(...)
+  if binding is missing|ambiguous|stale -> typed region guidance
+  return ready(normalization.normalized,
+    normalization.scenarioFingerprint, binding,
+    analysisAsOf=binding evidence snapshot asOf)
+
+startEvaluation(ready, expectedGeneration):
+  require expectedGeneration == reducer.currentGeneration
+  reducer allocates runId and captures EvaluationRunCoreV1
+  abort old resources; dispatch start(expectedGeneration, run)
+  start evaluateAt(run.analysisAsOf, retained exact normalized input/binding)
+  schedule tagged stage events
+
+on analysis terminal:
+  require workflowGeneration/runId match
+  ready -> validate full snapshot closure and retain pending
+  failed -> cancel resources; scenario(generation+1, bounded guidance)
+  cancelled -> cancel resources; scenario(generation+1)
+
+on invalidate(expectedGeneration, invalidatedRunId?):
+  accept only matching current generation and, when supplied, current run
+  cancel resources; discard pending; reducer increments generation; scenario
+
+finish:
+  accept only matching generation/run, stage 2 and ready pending snapshot
+  persist immutable snapshot + receipt; enter results
+
+restore(receipt, snapshot, retainedInput):
+  validate current generation, canonical snapshot ID, receipt fields,
+    normalized scenario fingerprint, original analysisAsOf and all bindings
+  optionally compare evaluateAt(original analysisAsOf, retainedInput)
+  exact closure -> results; otherwise scenario with guidance
+```
+
+Stage delay contributes at most 1,800 ms normally and 180 ms under reduced motion. These are presentation-delay ceilings, not end-to-end calculation budgets. Results appear after both presentation stages and analysis succeed; a valid slower analysis remains governed by the existing calculation budget. Cancelled/stale runs emit no later stage announcements.
+
+- INV-076: `scenarioFingerprint` is exactly the canonical `ShippedNormalizedScenarioV1` SHA-256 used by the stored result; raw-equivalent inputs normalize identically.
+- INV-077: Restoration uses the immutable original evidence `analysisAsOf` and stored result closure, never the current clock.
+- INV-078: Every mutating event matches current workflow generation; current-run analysis failure/cancellation is terminal and recovers to scenario.
+- INV-079: Normal/reduced-motion limits bound presentation contribution only; analysis readiness remains mandatory and uses the existing calculation budget.
+
+### LOG-WORKFLOW-001 revision v0.13.3 — schema and instant closure
+
+CTR-044 v0.13.3 is the exact executable root. `normalizeShippedScenarioV1` uses the declared numeric grammar, integer jobs rule and nonnegative `floor(x*1e6+0.5)/1e6` rounding; its canonical bytes are RFC 8785 JSON. The demo adapter emits the complete declared preset/origin-proof record and exact NZD-million conversion. Snapshot construction projects only `ShippedScenarioCalculationsV1` and `ShippedSiteAssessmentV1`, so the transitive graph has no shorthand types.
+
+`analysisAsOf` is the canonical UTC `Instant` copied from the selected evidence snapshot. Start, snapshot hashing, receipt creation, storage validation, restoration and `evaluateAt` assert exact instant equality. Two different instants on one NZ date remain different; offset-equivalent representations canonicalize to the same UTC instant.
+
+- INV-080: The full shipped input→normalization→adapter→calculation→assessment→snapshot→receipt graph compiles without unresolved symbols and is type-preserving, including integer jobs and exact investment units.
+- INV-081: Evidence binding, run, snapshot, receipt and restore oracle share one canonical UTC `analysisAsOf` instant; no date narrowing or wall-clock substitution is representable.
+
+### LOG-WORKFLOW-001 revision v0.13.4 — exact V2 roots
+
+All production workflow paths use the V2 CTR-044 roots only. Cooling is required in `ShippedScenarioInputV2`; omission, empty decoder input and `unknown` block readiness. Permanent jobs decodes directly to bounded `UInt64`. `adaptShippedDeterministicV1` emits the closed target/preset/proof-map record; the nine user-derived paths retain `user_assumption` while only the seven named defaults carry the exact preset reference.
+
+`refineSoleCurrentPreparedRegion` creates `PreparedRegionBindingV2` only after canonicalizing the evidence snapshot instant and includes that instant in the binding hash. Run creation asserts `run.analysisAsOf == run.region.analysisAsOf`; snapshot/receipt creation and restoration repeat this invariant before hashing or display.
+
+- INV-082: Cooling cannot be silently defaulted; every evaluated cooling choice is explicit and user-originated.
+- INV-083: Permanent jobs is integer-safe in both decoded and normalized schemas; adapter target/preset/origin proofs are one closed typed root.
+- INV-084: The canonical evidence instant is present at the prepared binding boundary and included in every downstream identity/hash.
+
+### LOG-WORKFLOW-001 revision v0.13.5 — closed V2 orchestration
+
+The reducer consumes only `EvaluationWorkflowV2` and `EvaluationEventV2`. History/session serialization emits only `StoredEvaluationRouteV2`; URL/history state carries only `EvaluationRouteV2`. Restore validates the stored payload hash and CTR-044 closure before dispatch. Any V1/legacy evaluation route or mismatched stored root produces a fresh scenario state with local bounded guidance.
+
+- INV-085: No exported shipped workflow, event, results route or stored-route root references a V1 run, snapshot, receipt or legacy evaluation route.
+- INV-086: Restored results require one validated V2 stored payload and one accepted V2 restore event; routes alone never reveal results.
+
+### LOG-WORKFLOW-001 revision v0.13.6 — effective-root switch
+
+Schema/client/storage generation begins only at `GridLensPublicContractV4`. Current route and persistence producers emit `WorkflowRouteStateV4` and `StoredEnvelopeV4`; `evaluation_v2` is the only result route kind. The named V3 migration adapter demotes every legacy evaluation route to scenario entry and cannot create a receipt.
+
+- INV-087: Every V2 orchestration root is reachable from the sole V4 master root; no current master/storage/route path reaches the legacy `evaluation` token.
+- INV-088: Legacy evaluation state is migration input only and always becomes scenario state, never results.

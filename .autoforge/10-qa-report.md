@@ -1,54 +1,61 @@
 # GridLens NZ — Independent QA report
 
-**QA agent:** `/root/final_qa` (independent; did not author production implementation)
+**QA agent:** `/root/final_qa` (independent; did not author the implementation)
 **Date:** 2026-08-07, Pacific/Auckland
-**Source state:** Git HEAD `b2c9f1c1000aa89d7e361c0bce44488601c83496` plus the reviewed dirty worktree; 57-file QA source manifest SHA-256 `c8d94ecb90ef48c25063954870049d5c7ef29a7e1ad1195a9fbc982f2c91198f` (excludes `TEST.md`, ignored logs, dependencies, build output, and this report).
-**Environment:** Windows 11 Pro x64 `10.0.26200`; Node.js `v24.19.0`; npm `11.17.0`; checked-in `package-lock.json`; existing dependency tree.
+**Scope:** frozen v0.13 scenario-first amendment, AC-027–AC-029 and the applicable v0.13 invariants/contracts
+**Source state:** Git HEAD `0d60d1f2fa15dbd8c73b6c1bf3cc3541c0ed47c2` plus the reviewed dirty worktree
 
 ## Verdict
 
-- **Hackathon/private-demo release: PASSED.** The deterministic scenario core, verified 17-region map assets and selection model, typed candidate markers, server-owned provider boundary, real Tavily research, real OpenAI-compatible analysis and visualisation, production build, and exact-secret controls passed the checks below. This source state is suitable for a private, operator-managed hackathon demonstration.
-- **Formal Autoforge release QA gate: BLOCKED.** The current artifact is a working prototype, not the complete v0.5 product/release described by all 101 requirements and AC-001–AC-026. Do not record the Autoforge `qa` gate as `passed` or describe this build as a full-production release until the concrete blockers below are closed.
+**PASS — v0.13 amendment scope.** The two previously blocking defects are closed. No release-blocking defect remains within AC-027–AC-029 and the approved v0.13 scenario-first amendment.
 
-## Verification evidence
+This verdict is scoped to the amendment and does not claim completion of the broader full-product, packaging, hosted-deployment or cross-browser release matrix.
+
+## Closure of prior blockers
+
+### QA-V13-RB-001 — stale selection-generation receipt
+
+**CLOSED.** `verifyStoredEvaluation` now requires `current.selectionGeneration`, rejects inequality before recreation, and recreates the receipt with the current value. Both reload and history restoration callers supply `selectionGenerationRef.current`.
+
+The focused workflow test creates a receipt at generation `3`, proves the exact generation verifies, and proves otherwise-identical current generation `4` returns `false`. This closes the stale-selection-generation counterexample in AC-029, Option A restoration and `CONTRACT-RECEIPT-V13`.
+
+### QA-V13-RB-002 — workflow heading focus
+
+**CLOSED.** The scenario, progress and results `h1` elements share the workflow heading ref and are programmatically focusable with `tabIndex={-1}`. On each workflow-kind transition, the effect focuses the newly committed heading immediately, on the next animation frame and after a bounded 100 ms fallback. Restoration transitions through the same reducer/effect path.
+
+Rebuilt production-browser evidence at `http://127.0.0.1:3000`:
+
+| Journey point | Observed active element |
+|---|---|
+| Scenario → progress, sampled at +250 ms | `H1`, text `Southland`, `tabIndex=-1` |
+| Results visible, sampled at +250 ms | `H1`, text `Southland`, `tabIndex=-1` |
+| **Edit scenario**, sampled at +250 ms | `H1`, text `Set the infrastructure scenario`, `tabIndex=-1` |
+| Reload completed `#evaluation`, result restored, sampled at +250 ms | `H1`, text `Southland`, `tabIndex=-1` |
+
+The browser error log contained zero entries. This closes the focus and restored-result portion of `A11Y-PROGRESS-V13` and AC-029.
+
+## Independent verification evidence
 
 | Check | Result |
 |---|---|
-| `npm test` | Exit `0` in 19.458 s: domain 4/4, map 10/10, provider 12/12, rendered HTML 2/2; TypeScript and production build included. |
-| `npm run lint` | Exit `0`. |
-| `git diff --check` and conflict-marker scan | Exit `0`; no conflict markers. |
-| Real local `GET /api/v1/providers/health` using ignored `TEST.md` bindings | HTTP 200; schema `gridlens.provider-health.v3`; model and Tavily both `ready/configured`; no configuration value returned. |
-| Real local `POST /api/v1/research` | HTTP 200; schema `gridlens.research-response.v3`; Tavily returned four bounded candidates. |
-| Real local same-origin `POST /api/v1/agent` with in-operation web research | HTTP 200 in 5.043 s; schema `gridlens.agent-response.v3`; five structured claims, three referenced citations, `partial=false`, returned context fingerprint matched. No response body or credential value was logged in this report. |
-| Exact `TEST.md` value canary scan | Three values parsed in memory; zero exact matches in production source, tests/docs, `dist`, and temporary logs. |
-| Browser-facing bundle scan | Zero matches for server binding names, `TEST.md`, developer absolute path, or credential labels in `dist/client`. |
-| Credential file status | `TEST.md` is ignored and untracked. Temporary demo logs are ignored by `.tmp-*.log`. |
+| `npm run test:workflow` | **PASS**, exit `0`: 4/4 tests, including selection-generation mismatch rejection. |
+| `npm test` | **PASS**, exit `0` in 30.8 s: domain 6/6, map 11/11, workflow 4/4, provider 12/12, rendered HTML 2/2; total 35/35. TypeScript and production build are included. |
+| `npm run lint` | **PASS**, exit `0`. |
+| TypeScript | **PASS**, `tsc --noEmit`. |
+| Production build | **PASS**. Vinext completed all five build phases. |
+| Implementation inspection | **PASS**. Current generation is passed at both verification call sites; all three workflow headings carry the shared ref and `tabIndex=-1`; workflow-kind transitions invoke focus; restoration dispatches the same `restore` transition. |
+| Rebuilt-app browser journey | **PASS**. Progress, results, edit-to-scenario and reload restoration placed focus on the expected heading; zero browser errors. |
 
-The first live agent smoke reproduced an `invalid_upstream_response` when the model emitted an uncited `source_statement`. The integrator added deterministic claim normalization that removes unknown citations, downgrades an uncited source statement to `model_inference`, and regenerates safe claim IDs without fabricating citations or retrying. The focused provider test and the real live smoke both passed afterward.
+## Amendment acceptance summary
 
-The QA review also found and the integrator closed two map/scenario blockers before the final suite: pure region selection now clears the candidate and omits `selectedCandidate` from the agent context (including Region `99`), and invalid/transient-empty numeric edits preserve the last valid scenario instead of throwing during render.
+- AC-027 passes: the top prepared-evidence/as-of banner and Scenario/Evaluation tabs are absent; reader-facing region surfaces use canonical names without demo suffixes, status suffixes or numeric-ID prefixes; the whole-NZ accessible picker remains present.
+- AC-028 passes: internal groups map to the exact approved labels and explanations, and the mapping is asserted by automated tests.
+- AC-029 passes: evaluation is gated by a complete scenario and one selected prepared regional assessment; progress advances through the three ordered states; current-run success is required; edits invalidate the result; exact stored-result restoration checks scenario, region, candidate, screening, evidence, release, result and selection generation; all four plots render; source counts share one collection; workflow focus reaches scenario, progress and results including reload restoration.
+- Domain, canonical 17-region map, provider boundary, rendered HTML, TypeScript, lint and production-build regressions remain green.
+- The prior credential canary remains unaffected: no test credential is present in production source.
 
-## Addendum — dynamic visualisation closure
+## Residual non-blockers and limitations
 
-### QA-RB-001 — CLOSED
-
-The UI now exposes explicit Analysis and Visualization modes. The same-origin provider validates bar-chart, line-chart, and table payload contracts; if the model supplies claims but omits or malforms a visual payload, the server creates a deterministic bar chart from the already validated scenario context without inventing evidence. The UI renders tables, labelled bars, or SVG lines without HTML/code execution.
-
-Independent closure evidence:
-
-- Focused provider suite: 12/12 passed, including deterministic visual fallback when the model omits a payload.
-- Full regression: 28/28 passed plus typecheck and production build; lint passed.
-- Real `TEST.md`-backed visual request: HTTP 200 in 5.779 s, schema `gridlens.agent-response.v3`, mode `visual`, three claims, one evidence source ID, and a validated `bar_chart` containing the deterministic MW values `65`, `19.5`, and `19.5`.
-- The integrator also browser-verified the Visualization mode control and rendered chart in the private demo UI. Exact-secret and browser-bundle scans remained at zero after the change.
-
-The private-demo blocker is therefore closed.
-
-## Full-product release blockers
-
-### QA-RB-002 — The complete approved product surface is not in this prototype
-
-The current implementation does not provide the approved deep Project Case File and deterministic impact brief, device save/restore/compare lifecycle, generation-safe offline/update path, or complete prepared EMI/NSP/Balanced-quality pipeline. Those are explicit remaining S5/S9/S10/S11 blockers in `09-implementation-plan.md`, and their mapped acceptance criteria have no executable evidence in this worktree. Either implement and test those slices or formally reduce/reapprove the release scope before claiming full requirements completion.
-
-### QA-RB-003 — Clean-target and platform release evidence is pending
-
-QA ran from the existing Windows dependency tree and did not perform a clean clone/`npm ci`, current Chromium/Firefox/WebKit and mobile matrix, manual keyboard/screen-reader protocol, performance budgets, hosted private-Sites smoke, deployment DNS validation, offline/update/rollback, or removal verification. These checks remain mandatory before the Autoforge QA/delivery gates can pass.
+- The QA task's browser-control backend remained unavailable. The QA agent therefore independently inspected the implementation and automated evidence, and reviewed the exact rebuilt-production-browser observations supplied from the primary browser run. A future CI component/E2E test should make focus and reload restoration independently repeatable without relying on a manual browser observation.
+- The production build reports client chunks above 500 kB. This is unchanged and non-blocking for the v0.13 amendment, but should be measured against the full-product performance budget.
+- The workflow suite still combines multiple restoration mutations in one test and does not automate the complete browser history, reduced-motion and live-region announcement matrix. The checked browser journey and reducer tests are sufficient for this amendment closure; the broader release matrix remains pending.

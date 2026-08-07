@@ -9,7 +9,7 @@ const evidence = (
   coveragePercent: number,
 ): SiteCandidate["evidence"] => ({
   kind: "prepared_demonstration_evidence",
-  asOf: "2026-08-01",
+  asOf: "2026-07-31T12:00:00.000Z",
   freshness,
   coverage,
   coveragePercent,

@@ -191,3 +191,12 @@ GridLens NZ Design 1 is complete only when:
 - production and packaged artifacts contain no credential/test secret or hidden relay/auth/database capability;
 - independent QA passes from a clean environment; and
 - the exact Sites artifact is privately deployed and verified with rollback/removal guidance.
+
+## v0.13 scenario-first interaction amendment
+
+| Slice | Owner | Depends on | Owned paths | Contract IDs | First tests | Status |
+|---|---|---|---|---|---|---|
+| Workflow model | Lead/integrator | LOG-WORKFLOW-001 | `src/client/evaluationWorkflow.ts`, workflow tests | INV-068, INV-071 | `MODEL-WORKFLOW-V13` | completed; focused tests green |
+| Reader-facing UI | Lead/integrator | Workflow model | `app/GridLensApp.tsx`, `app/NzMap.tsx`, `app/globals.css`, rendered tests | INV-069–070 | `UI-COPY-V13`, `UI-GATE-V13` | completed; browser interaction verified |
+| Independent logic review | Logic reviewer | v0.13 raw artifacts | `.autoforge/08-logic-review.md` only | FR-UX-001–007 | counterexamples and trace audit | validated v0.13.6 |
+| Independent QA | QA agent | integrated source | `.autoforge/10-qa-report.md` only | AC-027–029 | focused + full regression | planned |

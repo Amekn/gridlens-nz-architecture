@@ -20,9 +20,19 @@ test("server-renders the GridLens NZ demo shell", async () => {
   assert.match(html, /<title>GridLens NZ/);
   assert.match(html, /Candidate site atlas/);
   assert.match(html, /Set the infrastructure scenario/);
-  assert.match(html, /Prepared demo evidence/);
-  assert.match(html, /Accessible candidate site list/);
+  assert.match(html, /<h1[^>]*tabindex=["']-1["'][^>]*>Set the infrastructure scenario<\/h1>/i);
+  assert.match(html, /Accessible region list/);
+  assert.match(html, /Meets scenario/);
+  assert.match(html, /More evidence needed/);
+  assert.match(html, /Does not meet scenario/);
+  assert.match(html, /Selected region/);
+  assert.match(html, /Evaluate[\s\S]{0,40}Southland/);
   assert.match(html, /Sources <span>6<\/span>/);
+  assert.doesNotMatch(html, /Prepared demo evidence/);
+  assert.doesNotMatch(html, /Selected candidate/);
+  assert.doesNotMatch(html, /demonstration zone/i);
+  assert.doesNotMatch(html, /role=["']tablist["']/i);
+  assert.doesNotMatch(html, />\s*0[0-9]\s*[Â·\u00b7]/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Starter Project/);
 });
 

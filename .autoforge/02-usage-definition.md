@@ -268,3 +268,17 @@ If promoted later, the product may collect structured public feedback only after
 ## Usage acceptance summary
 
 Core release acceptance requires UJ-001 through UJ-017 where applicable, excluding the explicitly labelled stretch journeys. Automated tests cover deterministic, boundary, schema, spatial, unit/DST, concurrency, migration, failure, prompt/tool injection, secret leakage, and reproducibility behavior. Manual evidence covers accessibility, privacy comprehension, map/case-file usability, hosted first run, source attribution, connector persistence, and release lifecycle.
+
+## UJ-018 — Complete a scenario before evaluating a selected region (v0.13)
+
+- **Actor and goal:** A planner wants to understand a completed infrastructure scenario for one New Zealand region without confusing candidate terminology or technical status tags.
+- **Preconditions:** The whole-NZ map and prepared regional records are available. No provider service is required for deterministic evaluation.
+- **Trigger:** Open GridLens NZ or change a scenario field/selected region.
+- **Main path:** Complete every required scenario field; select a region on the map or synchronized name-only list; review the plain-language three-group key; activate **Evaluate [region]**; observe, in order, “Collecting region information”, “Calculating scenario impacts”, and “Synthesising evaluation”; then read the regional result, plots, evidence reason, and optional AI workspace.
+- **Alternate path:** Select another region or edit the scenario after results; the prior result is invalidated and the scenario-entry view returns. Activate **Edit scenario** from results to revise deliberately.
+- **Restoration path:** Back/forward or reload may reopen results only when the stored receipt and recomputed deterministic snapshot match the exact saved scenario, region, internal candidate/screening, evidence and release. A missing, corrupt, stale or mismatched receipt returns to scenario entry with guidance.
+- **Boundary/invalid behavior:** Blank scenario name, invalid numeric values, unknown/unselected cooling method, or a region without exactly one prepared regional record leaves the evaluate action disabled and shows concise corrective guidance. Numeric RegionIds, “demonstration zone”, and domain-outcome enum labels are not appended to reader-facing region names.
+- **Failure/recovery:** A cancelled or superseded transition cannot reveal stale results. Reduced-motion preference shortens transition timing while preserving announced states. Deterministic evaluation remains available when AI/research is unavailable.
+- **Outputs:** One scenario-bound, region-bound deterministic result; plain-language group explanation; unchanged internal calculation/outcome values; optional separately invoked AI analysis.
+- **Postcondition:** Results correspond to the scenario and region that completed the transition, or no result is shown.
+- **Traceability:** FR-UX-001–007; AC-027–029; FR-CAL-001–006; FR-ASM-001–008.

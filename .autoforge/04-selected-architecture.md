@@ -129,3 +129,7 @@ OpenAI Sites Cloudflare Worker
 ## Evolution path
 
 If sustained traffic, asynchronous research, or organizational audit/storage becomes necessary, the provider adapter may move to a separate service while preserving `/api/v1/providers/health`, `/api/v1/research`, and `/api/v1/agent` as the browser-facing contract.
+
+## v0.13 interaction-amendment compatibility
+
+The approved scenario-first regional workflow is implemented wholly inside the existing browser UI/state boundary. It adds no service, storage, data ownership, trust, deployment, or public API boundary. The deterministic evaluator continues to calculate from typed scenario input and the same prepared candidate record; only result access, transition state, and reader-facing terminology change. Option A therefore remains the selected architecture without a topology alternative.

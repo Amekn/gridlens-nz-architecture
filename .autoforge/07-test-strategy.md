@@ -841,3 +841,59 @@ The independent reviewer must re-run all G3V11 and G3V12 counterexamples against
 ### Version 0.12.2 storage-root compile test
 
 `CT-STORED-ENVELOPE-V122` compiles and round-trips every CTR-043 live payload and tombstone, including scenario draft/normalization state, separate result bytes, complete comparison bytes, confirmed profile, opt-in prompt history, migration/operation receipts, quarantine and key-discriminated preferences. Offline restore reconstructs the scenario/result/comparison from stored bytes rather than an ID alone. It mutation-kills store/payload mismatch, wrong payload hash, zero/reused revision, timestamp inversion, live deletion fields, tombstone payload or missing store class, wrong preference value kind, arbitrary JSON, connector/configuration/credential/endpoint/model/server fields, legacy input without a successful named adapter receipt, and unknown geography. The test also proves `StoredEnvelopeV3` is reachable from `GridLensDeterministicContractV3` and `GridLensPublicContractV3` with no unresolved symbol.
+
+## v0.13 interaction-amendment release tests
+
+| Test ID | Oracle | Requirements |
+|---|---|---|
+| UI-COPY-V13 | Server-rendered HTML contains no top-bar “Prepared demo evidence”, no Scenario/Evaluation tablist, no “Selected candidate”, no numeric-prefix region button, and no “demonstration zone”; it contains the three approved plain-language group labels. | FR-UX-001–006; AC-027–028 |
+| MODEL-WORKFLOW-V13 | Pure workflow reducer/property table rejects evaluation when scenario or selected assessment is incomplete; accepts only scenario→evaluating(0→1→2)→results for the current run; scenario/region mutation invalidates a run; stale stage events cannot reveal results. | FR-UX-007; AC-029; INV-068, INV-071 |
+| UI-GATE-V13 | The evaluate button exposes disabled state plus corrective guidance for incomplete scenario/missing region and invokes the current run only when valid. Results expose **Edit scenario**; no alternate direct navigation exists. | FR-UX-007; AC-029 |
+| REGRESSION-DETERMINISM-V13 | Existing domain, map, provider, type, build, lint, and rendered-shell suites remain behavior-compatible for internal outcomes, presentation groups, calculations, map selection, and security. | FR-CAL/ASM/CONN; INV-069–070 |
+
+Manual accessibility rehearsal checks keyboard focus, `aria-live` stage announcements, disabled-action guidance, and `prefers-reduced-motion`. The progress animation is presentation only; no provider/network call is claimed by a stage.
+
+### v0.13.1 blocker-closure tests
+
+| Test ID | Exact proof |
+|---|---|
+| CONTRACT-RECEIPT-V13 | Compile the closed CTR-044 run/event/receipt unions; reject missing/extra fields, wrong hashes, legacy evaluation routes, cross-region candidates, duplicate regional candidates, stale selection generations and mixed release/evidence/screening bindings. |
+| MODEL-ELIGIBILITY-V13 | Compare eligibility with the shipped authoritative `normalizeScenario` over valid boundaries and each invalid field. Prove blank source name and `unknown` cooling block after normalization, the shipped cooling vocabulary is unchanged, and only one exact current regional assessment can bind. |
+| MODEL-EVENTS-V13 | Fake timers interleave runs A/B, duplicate/reorder/skip stages, reverse scenario values, fail snapshot construction and dispatch stale analysis/finish events. Only the exact current run with stages 0→1→2 and matching ready snapshot reaches results. |
+| MODEL-RESTORE-V13 | Round-trip valid history/session receipt; reload/back/forward restore byte-equivalent results. Mutate scenario, region, candidate, selection generation, screening, evidence, release or result hash one at a time; each falls back to scenario. Legacy/direct URL routes cannot reveal results. |
+| RUNTIME-COPY-V13 | Hydrated runtime matrix covers all 17 canonical name-only rows, marker/polygon/list selection, selection card, all progress messages, result title, accessible names and copy surfaces. It forbids RegionId prefixes, “demonstration zone”, candidate/outcome suffixes and preserves evidence qualification in results/sources. |
+| GROUP-MAPPING-V13 | Assert exact CTR-044 internal-group→reader-label→fixed-explanation mapping for all three values; mutation-swapping any label fails. Canonical deterministic evaluation bytes before/after UI orchestration are identical. |
+| A11Y-PROGRESS-V13 | Fake timers prove three ordered `aria-live` semantic announcements, focus moves to progress then result heading, normal completion ≤1,800 ms and reduced-motion completion ≤180 ms; stale callbacks produce no announcement. |
+
+`UI-GATE-V13` additionally checks that the map selection card has no results shortcut, no tablist exists, disabled evaluate guidance is associated with the action, and **Edit scenario** is the only results-to-entry control apart from a region mutation. Provider unavailability cannot affect receipt construction or deterministic results.
+
+### v0.13.2 final blocker-closure tests
+
+- `CONTRACT-SHIPPED-SCENARIO-V132` compiles every exact `ShippedScenarioInputV1` field through `ShippedNormalizationOutcomeV1`, mutation-removes/renames each field and cooling value, and proves golden equivalence with the approved deterministic adapter/calculation fixtures.
+- `FINGERPRINT-RESTORE-V132` proves scenario fingerprint is the canonical normalized SHA-256; numeric string/number and whitespace-equivalent inputs match. It restores the immutable stored snapshot using original evidence `analysisAsOf` immediately before/after a freshness boundary, across NZ DST/timezone changes and after wall-clock advance; current-clock substitution mutation fails.
+- `MODEL-TERMINAL-V132` covers ready/failed/cancelled analysis terminals, current-run failure guidance, cleanup, stale terminals, stale start/invalidate, scenario reversal, generation mismatch, duplicate finish and zero post-cancel announcements.
+- `PERF-PRESENTATION-V132` holds valid deterministic analysis for the approved maximum calculation latency in both motion modes. Presentation contributes at most 1,800/180 ms, total completion waits for readiness, and neither mode can reveal a missing/failed snapshot.
+- `MODEL-RESTORE-V13` additionally requires immutable snapshot bytes and receipt; missing stored snapshot, result-ID mutation, `analysisAsOf` mutation and raw-equivalent/canonical-different cases fail closed.
+
+### v0.13.3 schema/instant closure tests
+
+- `CONTRACT-FULL-SHIPPED-GRAPH-V133` compiles/mutation-kills every transitive CTR-044 symbol and field from input through receipt; undeclared shorthand or field omission fails.
+- `NORMALIZE-NUMERIC-V133` rejects signed/exponent/separated/oversized numeric text and fractional jobs; checks integer job boundaries; checks round6 equality/just-below/just-above half-way values; proves exact NZD-million conversion and every preset/origin-proof field.
+- `RESTORE-INSTANT-V133` requires byte-identical canonical UTC instant across evidence, binding, run, snapshot, receipt and `evaluateAt`. It distinguishes two instants on the same local date and UTC/NZ date-boundary pairs, covers both NZ DST transitions, canonicalizes offset-equivalent instants identically, and mutation-fails millisecond/current-clock/date-only substitution.
+
+### v0.13.4 exact-root tests
+
+- `CONTRACT-CTR044-V2` proves no V1 shipped workflow root is exported and compiles the V2 input/normalized/binding/adapter/run/snapshot/receipt closure, including the complete field-origin union and preset reference.
+- `ELIGIBILITY-COOLING-V134` rejects omitted, empty, decoder-invalid and explicit `unknown` cooling; accepts every explicit supported value and proves each origin is `user_assumption`.
+- `ADAPTER-ORIGIN-V134` rejects fractional/negative/over-bound jobs in input and normalized decoders, verifies all nine user and seven preset proof-map entries, preset hash, exact target fields, investment conversion and mutation-swapped origins.
+- `BINDING-INSTANT-V134` mutation-tests evidence↔binding↔run↔snapshot↔receipt/evaluator instant equality and hash inclusion for same-date distinct instants, offset-equivalent instants, DST transitions and current-clock substitution.
+
+### v0.13.5 V2 orchestration-root tests
+
+- `CONTRACT-ORCHESTRATION-V135` compiles all `EvaluationWorkflowV2`, `EvaluationEventV2`, `WorkflowRouteStateV4` and `StoredEvaluationRouteV2` variants and their transitive V2 graph; any V1 run/snapshot/receipt, legacy evaluation route or unresolved root fails.
+- `ROUTE-STORAGE-V135` round-trips the exact V2 payload hash and verified restore event; mutation of route, receipt, snapshot, retained input or payload hash falls to scenario. A bare route, legacy V3 evaluation route, deep link or attacker guidance cannot reveal results.
+
+### v0.13.6 effective-root tests
+
+- `CT-MASTER-ROOT-V136` compiles from `GridLensPublicContractV4`, proves all V2 workflow/event/route/storage types are reachable, and mutation-fails removal of each. Any current import/reference to V3 public route/storage roots or the legacy `evaluation` token fails.
+- `MIGRATE-ROUTE-V136` covers every V3 route: non-evaluation routes map exactly; legacy evaluation always becomes scenario with bounded local guidance and cannot acquire a receipt or results snapshot. V4 storage round-trips `route` and `evaluation_route` separately with exact live/tombstone discriminants.

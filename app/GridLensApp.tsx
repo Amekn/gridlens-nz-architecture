@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type RefObject } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Ban,
   Check,
@@ -28,7 +29,6 @@ import {
   type ImpactPlotModel,
   type ScenarioInput,
   type SiteAssessment,
-  type SiteDomainOutcome,
   type SitePresentationGroup,
 } from "@/src/domain";
 import {
@@ -39,6 +39,20 @@ import {
   type ResearchCandidate,
   type RegionId,
 } from "@/src/client/providerApi";
+import {
+  ASSESSMENT_PRESENTATION,
+  createStoredEvaluation,
+  initialWorkflowState,
+  NORMAL_STAGE_DELAY_MS,
+  parseStoredEvaluation,
+  PROGRESS_STAGES,
+  REDUCED_STAGE_DELAY_MS,
+  scenarioReadiness,
+  STORED_EVALUATION_KEY,
+  verifyStoredEvaluation,
+  workflowReducer,
+  type StoredEvaluation,
+} from "@/src/client/evaluationWorkflow";
 import { REGION_BY_ID, regionIdForName } from "@/src/map/regions";
 import { singleCandidateIdForRegion } from "@/src/map/selection";
 import { NzMap, type MapSite } from "./NzMap";
@@ -47,14 +61,6 @@ const GROUP_LABELS: Record<SitePresentationGroup, string> = {
   passes_declared_constraints: "passes declared constraints",
   needs_investigation: "needs investigation",
   excluded: "excluded",
-};
-
-const OUTCOME_LABELS: Record<SiteDomainOutcome, string> = {
-  included: "Included",
-  specialist_assessment_required: "Specialist assessment required",
-  infrastructure_upgrade_required: "Infrastructure upgrade required",
-  insufficient_evidence: "Insufficient evidence",
-  excluded: "Excluded",
 };
 
 const SOURCE_FAMILIES = [
@@ -209,6 +215,34 @@ function ImpactPlotDashboard({ plots }: { plots: readonly ImpactPlotModel[] }) {
   </section>;
 }
 
+function EvaluationProgress({
+  region,
+  stage,
+  headingRef,
+}: {
+  readonly region: string;
+  readonly stage: 0 | 1 | 2;
+  readonly headingRef: RefObject<HTMLHeadingElement | null>;
+}) {
+  return <div className="evaluation-progress" role="status" aria-live="polite" aria-atomic="false">
+    <div className="evaluation-orbit" aria-hidden="true"><CircleGauge size={34} /></div>
+    <span className="eyebrow">Evaluating selected region</span>
+    <h1 ref={headingRef} tabIndex={-1}>{region}</h1>
+    <p>Applying your completed scenario to the prepared regional evidence.</p>
+    <ol aria-label="Evaluation progress">
+      {PROGRESS_STAGES.map((label, index) => <li
+        key={label}
+        className={index < stage ? "complete" : index === stage ? "active" : "pending"}
+        aria-current={index === stage ? "step" : undefined}
+      >
+        <i aria-hidden="true">{index < stage ? <Check size={14} /> : index + 1}</i>
+        <span><strong>{label}</strong><small>{index < stage ? "Complete" : index === stage ? "In progress" : "Waiting"}</small></span>
+      </li>)}
+    </ol>
+    <span className="sr-only">{PROGRESS_STAGES[stage]}</span>
+  </div>;
+}
+
 export function GridLensApp() {
   const [scenario, setScenario] = useState<ScenarioInput>({
     name: "AI compute campus",
@@ -224,7 +258,14 @@ export function GridLensApp() {
   const evaluation = useMemo(() => evaluateScenario(scenario), [scenario]);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>("demo-southland-invercargill");
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId>("15");
-  const [activeView, setActiveView] = useState<"scenario" | "results">("scenario");
+  const [workflow, dispatchWorkflow] = useReducer(workflowReducer, initialWorkflowState);
+  const [restoreCandidate, setRestoreCandidate] = useState<StoredEvaluation>();
+  const runCounterRef = useRef(0);
+  const selectionGenerationRef = useRef(1);
+  const activeStoredRef = useRef<StoredEvaluation | undefined>(undefined);
+  const restoreAttemptedRef = useRef(false);
+  const workflowHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const previousWorkflowKindRef = useRef(workflow.kind);
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -263,6 +304,10 @@ export function GridLensApp() {
   const selectedRegionName = REGION_BY_ID[selectedRegionId].displayName;
   const categories = selectedAssessment ? categoryViews(selectedAssessment) : [];
   const impactPlots = buildImpactPlots(evaluation.normalizedScenario, evaluation.calculations, selectedAssessment);
+  const readiness = scenarioReadiness(scenario);
+  const canEvaluate = readiness.ready && Boolean(selectedAssessment);
+  const evaluationGuidance = readiness.guidance
+    ?? (!selectedAssessment ? "Select a region with prepared evidence on the map." : undefined);
   const groupCounts = {
     passes_declared_constraints: evaluation.groups.passes_declared_constraints.length,
     needs_investigation: evaluation.groups.needs_investigation.length,
@@ -271,7 +316,7 @@ export function GridLensApp() {
 
   const mapSites: MapSite[] = evaluation.assessments.map((entry) => ({
     id: entry.candidate.id,
-    name: entry.candidate.name,
+    name: entry.candidate.region,
     region: entry.candidate.region,
     regionId: regionIdForName(entry.candidate.region),
     latitude: entry.candidate.latitude,
@@ -285,7 +330,165 @@ export function GridLensApp() {
     return haystack.includes(searchQuery.trim().toLowerCase());
   });
 
+  const evaluatingRun = workflow.kind === "evaluating" ? workflow.run : undefined;
+  const resultsKey = workflow.kind === "results" ? workflow.receipt.resultSnapshotId : "";
+
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#evaluation") return;
+    const stored = parseStoredEvaluation(window.sessionStorage.getItem(STORED_EVALUATION_KEY));
+    if (!stored) {
+      window.history.replaceState({ gridlensScenario: true }, "", "#scenario");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      activeStoredRef.current = stored;
+      runCounterRef.current = Math.max(runCounterRef.current, stored.receipt.run.runId);
+      selectionGenerationRef.current = stored.receipt.run.selectionGeneration;
+      setScenario(stored.retainedInput);
+      setSelectedRegionId(stored.receipt.run.regionId);
+      setSelectedSiteId(stored.receipt.run.candidateId);
+      setRestoreCandidate(stored);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!restoreCandidate || !selectedAssessment || restoreAttemptedRef.current) return;
+    restoreAttemptedRef.current = true;
+    void verifyStoredEvaluation(restoreCandidate, {
+      scenarioInput: scenario,
+      regionId: selectedRegionId,
+      selectionGeneration: selectionGenerationRef.current,
+      assessment: selectedAssessment,
+      evaluation,
+    }).then((valid) => {
+      if (valid) {
+        dispatchWorkflow({
+          type: "restore",
+          expectedGeneration: workflow.workflowGeneration,
+          receipt: restoreCandidate.receipt,
+          snapshot: restoreCandidate.snapshot,
+        });
+      } else if (typeof window !== "undefined") {
+        activeStoredRef.current = undefined;
+        window.sessionStorage.removeItem(STORED_EVALUATION_KEY);
+        window.history.replaceState({ gridlensScenario: true }, "", "#scenario");
+        dispatchWorkflow({
+          type: "invalidate",
+          expectedGeneration: workflow.workflowGeneration,
+          guidance: "The saved evaluation no longer matches this scenario. Evaluate it again.",
+        });
+      }
+      setRestoreCandidate(undefined);
+    });
+  }, [evaluation, restoreCandidate, scenario, selectedAssessment, selectedRegionId, workflow.workflowGeneration]);
+
+  useEffect(() => {
+    if (!evaluatingRun) return;
+    const run = evaluatingRun;
+    const reducedMotion = typeof window !== "undefined"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const delay = reducedMotion ? REDUCED_STAGE_DELAY_MS : NORMAL_STAGE_DELAY_MS;
+    const timers = [
+      window.setTimeout(() => dispatchWorkflow({
+        type: "stage",
+        workflowGeneration: run.workflowGeneration,
+        runId: run.runId,
+        expectedStage: 0,
+        nextStage: 1,
+      }), delay),
+      window.setTimeout(() => dispatchWorkflow({
+        type: "stage",
+        workflowGeneration: run.workflowGeneration,
+        runId: run.runId,
+        expectedStage: 1,
+        nextStage: 2,
+      }), delay * 2),
+      window.setTimeout(() => dispatchWorkflow({
+        type: "finish",
+        workflowGeneration: run.workflowGeneration,
+        runId: run.runId,
+      }), delay * 3),
+    ];
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [evaluatingRun]);
+
+  useEffect(() => {
+    if (previousWorkflowKindRef.current === workflow.kind) return;
+    previousWorkflowKindRef.current = workflow.kind;
+    const focusHeading = () => workflowHeadingRef.current?.focus({ preventScroll: true });
+    focusHeading();
+    const frame = window.requestAnimationFrame(focusHeading);
+    const timer = window.setTimeout(focusHeading, 100);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [workflow.kind]);
+
+  useEffect(() => {
+    if (!resultsKey || typeof window === "undefined") return;
+    const stored = activeStoredRef.current;
+    if (!stored || stored.receipt.resultSnapshotId !== resultsKey) return;
+    window.sessionStorage.setItem(STORED_EVALUATION_KEY, JSON.stringify(stored));
+    const historyState = { gridlensEvaluation: stored.payloadHash };
+    if (window.location.hash === "#evaluation") {
+      window.history.replaceState(historyState, "", "#evaluation");
+    } else {
+      window.history.pushState(historyState, "", "#evaluation");
+    }
+  }, [resultsKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = (event: PopStateEvent) => {
+      const stored = activeStoredRef.current;
+      if (event.state?.gridlensEvaluation && stored && selectedAssessment
+        && event.state.gridlensEvaluation === stored.payloadHash) {
+        void verifyStoredEvaluation(stored, {
+          scenarioInput: scenario,
+          regionId: selectedRegionId,
+          selectionGeneration: selectionGenerationRef.current,
+          assessment: selectedAssessment,
+          evaluation,
+        }).then((valid) => {
+          if (valid) dispatchWorkflow({
+            type: "restore",
+            expectedGeneration: workflow.workflowGeneration,
+            receipt: stored.receipt,
+            snapshot: stored.snapshot,
+          });
+        });
+        return;
+      }
+      dispatchWorkflow({
+        type: "invalidate",
+        expectedGeneration: workflow.workflowGeneration,
+      });
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [evaluation, scenario, selectedAssessment, selectedRegionId, workflow.workflowGeneration]);
+
+  function clearStoredEvaluation() {
+    activeStoredRef.current = undefined;
+    if (typeof window !== "undefined") window.sessionStorage.removeItem(STORED_EVALUATION_KEY);
+  }
+
+  function invalidateEvaluation(guidance?: string) {
+    const invalidatedRunId = workflow.kind === "evaluating" ? workflow.run.runId
+      : workflow.kind === "results" ? workflow.receipt.run.runId : undefined;
+    dispatchWorkflow({
+      type: "invalidate",
+      expectedGeneration: workflow.workflowGeneration,
+      ...(invalidatedRunId !== undefined ? { invalidatedRunId } : {}),
+      ...(guidance ? { guidance } : {}),
+    });
+    clearStoredEvaluation();
+  }
+
   function updateScenario(field: keyof ScenarioInput, value: string | number) {
+    invalidateEvaluation();
     if (field === "name") {
       setScenario((current) => ({ ...current, name: String(value) }));
       return;
@@ -315,6 +518,8 @@ export function GridLensApp() {
   }
 
   function selectSite(siteId: string) {
+    invalidateEvaluation();
+    selectionGenerationRef.current += 1;
     setSelectedSiteId(siteId);
     const assessment = evaluation.assessments.find((entry) => entry.candidate.id === siteId);
     const regionId = assessment ? regionIdForName(assessment.candidate.region) : undefined;
@@ -322,10 +527,60 @@ export function GridLensApp() {
   }
 
   function selectRegion(regionId: RegionId, _source: string, selectedSite?: string) {
+    invalidateEvaluation();
+    selectionGenerationRef.current += 1;
     setSelectedRegionId(regionId);
     setSelectedSiteId(
       selectedSite ?? singleCandidateIdForRegion(regionId, mapSites) ?? null,
     );
+  }
+
+  async function startEvaluation() {
+    if (!canEvaluate || !selectedAssessment) return;
+    const expectedGeneration = workflow.workflowGeneration;
+    const runId = runCounterRef.current + 1;
+    runCounterRef.current = runId;
+    try {
+      const stored = await createStoredEvaluation({
+        runId,
+        workflowGeneration: expectedGeneration,
+        selectionGeneration: selectionGenerationRef.current,
+        scenarioInput: scenario,
+        regionId: selectedRegionId,
+        assessment: selectedAssessment,
+        evaluation,
+      });
+      activeStoredRef.current = stored;
+      dispatchWorkflow({
+        type: "start",
+        expectedGeneration,
+        run: stored.receipt.run,
+      });
+      dispatchWorkflow({
+        type: "analysis_terminal",
+        workflowGeneration: expectedGeneration,
+        runId,
+        outcome: { status: "ready", snapshot: stored.snapshot },
+      });
+    } catch (error) {
+      dispatchWorkflow({
+        type: "invalidate",
+        expectedGeneration,
+        guidance: error instanceof Error ? error.message : "Evaluation could not be completed.",
+      });
+    }
+  }
+
+  function editScenario() {
+    const invalidatedRunId = workflow.kind === "results" ? workflow.receipt.run.runId : undefined;
+    dispatchWorkflow({
+      type: "invalidate",
+      expectedGeneration: workflow.workflowGeneration,
+      ...(invalidatedRunId !== undefined ? { invalidatedRunId } : {}),
+    });
+    if (typeof window !== "undefined") {
+      window.history.pushState({ gridlensScenario: true }, "", "#scenario");
+    }
   }
 
   async function askAgent() {
@@ -387,10 +642,6 @@ export function GridLensApp() {
           <div className="brand-mark"><Leaf size={20} strokeWidth={2.4} /></div>
           <div><strong>GridLens</strong><span>NZ</span></div>
         </div>
-        <div className="topbar-context">
-          <span className="prepared-badge"><i /> Prepared demo evidence</span>
-          <span className="asof">As of 01 Aug 2026</span>
-        </div>
         <nav className="top-actions" aria-label="Application tools">
           <button className="quiet-button" onClick={() => setSourcesOpen(true)}><Database size={16} /> Sources <span>{SOURCE_FAMILIES.length}</span></button>
           <button className="quiet-button" onClick={() => setSettingsOpen(true)}>
@@ -411,31 +662,22 @@ export function GridLensApp() {
           <div className="map-insight-card">
             <div className="insight-icon"><MapPin size={19} /></div>
             <div>
-              <span className="eyebrow">{selectedAssessment ? "Selected candidate" : "Selected region"}</span>
-              <strong>{selectedAssessment?.candidate.name ?? selectedRegionName}</strong>
+              <span className="eyebrow">Selected region</span>
+              <strong>{selectedRegionName}</strong>
               <p>{selectedAssessment
-                ? `${selectedAssessment.candidate.region} • ${OUTCOME_LABELS[selectedAssessment.domainOutcome]}`
-                : "Region-level view • Select a marker for site screening"}</p>
+                ? "Ready for scenario evaluation"
+                : "Select a mapped region with prepared evidence"}</p>
             </div>
-            <div className={`group-pill ${selectedAssessment?.presentationGroup ?? "region-only"}`}>
-              {selectedAssessment ? GROUP_LABELS[selectedAssessment.presentationGroup] : "region only"}
-            </div>
-            <button className="icon-button" onClick={() => setActiveView("results")} aria-label="Open selected region results"><ChevronRight /></button>
           </div>
         </div>
 
         <aside className="control-panel">
-          <div className="panel-tabs" role="tablist" aria-label="Scenario workspace">
-            <button role="tab" aria-selected={activeView === "scenario"} className={activeView === "scenario" ? "active" : ""} onClick={() => setActiveView("scenario")}>Scenario</button>
-            <button role="tab" aria-selected={activeView === "results"} className={activeView === "results" ? "active" : ""} onClick={() => setActiveView("results")}>Evaluation</button>
-          </div>
-
-          {activeView === "scenario" ? (
+          {workflow.kind === "scenario" ? (
             <div className="panel-scroll">
               <section className="panel-section scenario-hero">
                 <span className="eyebrow">Configure demand</span>
-                <h1>Set the infrastructure scenario</h1>
-                <p>Change the declared load, then select a site directly on the map. Results update deterministically.</p>
+                <h1 ref={workflowHeadingRef} tabIndex={-1}>Set the infrastructure scenario</h1>
+                <p>Complete the scenario, then choose a New Zealand region on the map to run a deterministic evaluation.</p>
               </section>
 
               <section className="panel-section form-stack">
@@ -452,10 +694,10 @@ export function GridLensApp() {
                 </div>
                 <div className="field-grid">
                   <label className="field-label">Cooling method <span>prepared assumption</span>
-                    <select aria-label="Cooling method" value={scenario.coolingMethod ?? "hybrid"} onChange={(event) => updateScenario("coolingMethod", event.target.value)}>
+                    <select aria-label="Cooling method" value={scenario.coolingMethod ?? "unknown"} onChange={(event) => updateScenario("coolingMethod", event.target.value)}>
                       <option value="air">Air cooling</option>
                       <option value="evaporative">Evaporative cooling</option>
-                      <option value="direct_liquid">Direct liquid cooling</option>
+                      <option value="water_cooled">Water cooling</option>
                       <option value="hybrid">Hybrid cooling</option>
                       <option value="unknown">Unknown</option>
                     </select>
@@ -489,18 +731,20 @@ export function GridLensApp() {
               </section>
 
               <section className="panel-section">
-                <div className="section-heading"><div><span className="eyebrow">Whole-NZ map index</span><h2>Choose a candidate on the map</h2></div><span>{filteredAssessments.length}</span></div>
+                <div className="section-heading"><div><span className="eyebrow">Whole-NZ map index</span><h2>Choose a region on the map</h2></div><span>{filteredAssessments.length}</span></div>
                 <div className="search-box"><Search size={16} /><input aria-label="Search synchronized map list" placeholder="Focus the map by place…" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /></div>
-                <div className="group-summary" aria-label="Separate site groups">
-                  <span className="pass"><i />{groupCounts.passes_declared_constraints} pass</span>
-                  <span className="investigate"><i />{groupCounts.needs_investigation} investigate</span>
-                  <span className="excluded"><i />{groupCounts.excluded} excluded</span>
+                <div className="assessment-guide" aria-label="How to read the regional assessment colors">
+                  {(Object.keys(ASSESSMENT_PRESENTATION) as SitePresentationGroup[]).map((group) => <div className={group} key={group}>
+                    <i aria-hidden="true" />
+                    <span><strong>{ASSESSMENT_PRESENTATION[group].label}</strong><small>{ASSESSMENT_PRESENTATION[group].explanation}</small></span>
+                    <em>{groupCounts[group]}</em>
+                  </div>)}
                 </div>
-                <div className="site-list" aria-label="Accessible candidate site list">
+                <div className="site-list" aria-label="Accessible region list">
                   {filteredAssessments.slice(0, 7).map((entry) => (
                     <button key={entry.candidate.id} className={entry.candidate.id === selectedSiteId ? "selected" : ""} onClick={() => selectSite(entry.candidate.id)}>
                       <i className={`site-status ${entry.presentationGroup}`} />
-                      <span><strong>{entry.candidate.region}</strong><small>{OUTCOME_LABELS[entry.domainOutcome]}</small></span>
+                      <span><strong>{entry.candidate.region}</strong></span>
                       <ChevronRight size={16} />
                     </button>
                   ))}
@@ -508,20 +752,31 @@ export function GridLensApp() {
               </section>
 
               <div className="panel-cta-wrap">
-                <button className="primary-button" onClick={() => setActiveView("results")}>{selectedAssessment ? "Evaluate selected site" : "Explore selected region"} <ArrowRight size={17} /></button>
-                <p>Deterministic rules • No AI scoring • Separate groups</p>
+                <button
+                  className="primary-button"
+                  onClick={() => void startEvaluation()}
+                  disabled={!canEvaluate}
+                  aria-describedby="evaluation-guidance"
+                >Evaluate {selectedAssessment ? selectedRegionName : "selected region"} <ArrowRight size={17} /></button>
+                <p id="evaluation-guidance">{evaluationGuidance ?? "Scenario complete • Region selected • Ready to evaluate"}</p>
               </div>
+            </div>
+          ) : workflow.kind === "evaluating" ? (
+            <div className="panel-scroll progress-panel">
+              <EvaluationProgress region={selectedRegionName} stage={workflow.stage} headingRef={workflowHeadingRef} />
             </div>
           ) : (
             <div className="panel-scroll">
-              {selectedAssessment ? <>
+              {selectedAssessment && <>
                 <section className="panel-section result-hero">
-                  <div className="result-kicker"><span className={`site-status ${selectedAssessment.presentationGroup}`} />{selectedAssessment.candidate.region}</div>
-                  <h1>{selectedAssessment.candidate.name}</h1>
+                  <button className="text-button result-back" onClick={editScenario}><ArrowLeft size={15} /> Edit scenario</button>
+                  <div className="result-kicker"><span className={`site-status ${selectedAssessment.presentationGroup}`} />Selected region</div>
+                  <h1 ref={workflowHeadingRef} tabIndex={-1}>{selectedRegionName}</h1>
                   <div className={`outcome-banner ${selectedAssessment.presentationGroup}`}>
                     <div>{selectedAssessment.presentationGroup === "excluded" ? <Ban /> : selectedAssessment.presentationGroup === "needs_investigation" ? <AlertTriangle /> : <Check />}</div>
-                    <span><small>Deterministic site outcome</small><strong>{OUTCOME_LABELS[selectedAssessment.domainOutcome]}</strong></span>
+                    <span><small>Scenario assessment</small><strong>{ASSESSMENT_PRESENTATION[selectedAssessment.presentationGroup].label}</strong></span>
                   </div>
+                  <p className="assessment-explanation">{ASSESSMENT_PRESENTATION[selectedAssessment.presentationGroup].explanation}</p>
                   <p className="result-reason">{selectedAssessment.reasons[0]?.message}</p>
                 </section>
 
@@ -543,21 +798,6 @@ export function GridLensApp() {
                       </div>;
                     })}
                   </div>
-                </section>
-              </> : <>
-                <section className="panel-section result-hero">
-                  <div className="result-kicker"><span className="site-status needs_investigation" />Region {selectedRegionId}</div>
-                  <h1>{selectedRegionName}</h1>
-                  <div className="outcome-banner needs_investigation">
-                    <div><MapPin /></div>
-                    <span><small>Region-level selection</small><strong>No candidate site selected</strong></span>
-                  </div>
-                  <p className="result-reason">Select a map marker to run deterministic site screening, or ask the agent a region-level research question below.</p>
-                </section>
-                <section className="metric-ribbon results">
-                  <div><span>Added peak</span><strong>{evaluation.calculations.addedPeakMw.toFixed(1)} <small>MW</small></strong></div>
-                  <div><span>Annual energy</span><strong>{evaluation.calculations.annualEnergyGwh.toFixed(2)} <small>GWh</small></strong></div>
-                  <div><span>Flexible load</span><strong>{evaluation.calculations.maximumFlexibleLoadMw.toFixed(1)} <small>MW</small></strong></div>
                 </section>
               </>}
 

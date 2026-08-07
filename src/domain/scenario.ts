@@ -8,7 +8,7 @@ import type {
 const COOLING_METHODS = new Set<CoolingMethod>([
   "air",
   "evaporative",
-  "direct_liquid",
+  "water_cooled",
   "hybrid",
   "unknown",
 ]);
@@ -70,6 +70,9 @@ export const normalizeScenario = (input: ScenarioInput): NormalizedScenario => {
   assertRange(concurrencyRatio, "concurrencyRatio", 0, 1);
   assertRange(targetNetworkGbps, "targetNetworkGbps", 1, 100_000);
   assertRange(permanentJobs, "permanentJobs", 0, 100_000);
+  if (!Number.isInteger(permanentJobs)) {
+    throw new RangeError("permanentJobs must be a whole number.");
+  }
   assertRange(regionalInvestmentNzdM, "regionalInvestmentNzdM", 0, 1_000_000);
   if (!COOLING_METHODS.has(coolingMethod)) {
     throw new RangeError("coolingMethod is not supported.");

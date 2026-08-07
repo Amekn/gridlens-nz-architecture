@@ -5048,3 +5048,356 @@ type StoredEnvelopeV3 =
 ```
 
 `payloadHash` is SHA-256 over the canonical `StoredPayloadV3` bytes. A live envelope has no deletion fields; a tombstone has no payload and retains the exact deleted store class. Store and payload discriminants must agree. Scenario bytes round-trip through `ScenarioStorePayloadV2`, results through their separate `ResultSnapshotV2` variant, and comparisons through the complete `ComparisonSnapshotV2`. Prompt history is legal only when its existing opt-in policy enables it. Provider configuration, credentials, endpoints, model IDs, connector/vault/acceptance records, server configuration, raw provider content, and arbitrary JSON have no legal variant. Legacy V2 records first pass their named CTR-037 adapter; only the validated adapter output and receipt can be wrapped as a current live envelope. Unknown geography or connector-bearing legacy payloads quarantine and never enter `StoredEnvelopeV3`.
+
+### CTR-044 — Shipped demo evaluation run, receipt, restoration and copy mapping
+
+CTR-044 is the exact UI orchestration contract for the shipped browser demo. It consumes the shipped domain module's `ScenarioInput -> normalizeScenario -> NormalizedScenario` contract; it does not redefine the broader full-product `ScenarioDraftV2`. Workflow readiness requires successful authoritative normalization plus the two UI-required declarations that the normalizer deliberately defaults: a non-empty source scenario name and a cooling method other than `unknown`. The shipped cooling vocabulary remains unchanged.
+
+```text
+type PreparedRegionBindingV1 = exact {
+  regionId:RegionId
+  candidateId:CandidateId
+  selectionGeneration:SafeInteger[1..9007199254740991]
+  screeningHash:Sha256
+  evidenceSnapshotId:Sha256
+  releaseManifestHash:Sha256
+}
+
+type EvaluationRunReceiptV1 = exact {
+  schemaVersion:"gridlens.evaluation-receipt.v1"
+  runId:SafeInteger[1..9007199254740991]
+  scenarioFingerprint:Sha256
+  region:PreparedRegionBindingV1
+  resultSnapshotId:Sha256
+}
+
+type EvaluationWorkflowV1 =
+  | exact { kind:"scenario"; generation:SafeInteger; guidance?:PlainText<240> }
+  | exact { kind:"evaluating"; run:EvaluationRunReceiptV1 minus resultSnapshotId;
+      stage:0|1|2; analysis:"pending"|exact { ready:ResultSnapshotV2 } }
+  | exact { kind:"results"; receipt:EvaluationRunReceiptV1 }
+
+type EvaluationEventV1 =
+  | exact { type:"start"; run:EvaluationRunReceiptV1 minus resultSnapshotId }
+  | exact { type:"stage"; runId:SafeInteger; expectedStage:0|1; nextStage:1|2 }
+  | exact { type:"analysis_ready"; runId:SafeInteger; snapshot:ResultSnapshotV2 }
+  | exact { type:"finish"; runId:SafeInteger }
+  | exact { type:"invalidate"; nextGeneration:SafeInteger; guidance?:PlainText<240> }
+  | exact { type:"restore"; receipt:EvaluationRunReceiptV1 }
+```
+
+The prepared-region index is keyed by canonical `RegionId` and returns a binding only when exactly one current candidate belongs to the region and its selection generation, screening, evidence and active spatial release hashes verify. Zero, duplicate, mismatched or stale rows return typed `missing|ambiguous|stale` guidance and cannot start.
+
+`stage` events are accepted only when the current state is `evaluating`, `runId` matches, and `expectedStage` equals the current stage. `analysis_ready` is accepted only when every snapshot closure hash matches the captured run. `finish` requires stage 2 plus a matching ready snapshot and constructs the final receipt. Invalidating increments generation, cancels timers/work, discards pending snapshots and returns to `scenario`.
+
+`WorkflowRouteStateV3.page="evaluation"` is superseded for this shipped workflow by:
+
+```text
+exact { page:"evaluation_v1"; receipt:EvaluationRunReceiptV1 }
+```
+
+History/session restoration recomputes authoritative normalization, the unique prepared-region binding and deterministic result snapshot, then compares every receipt field. Only a byte-equivalent closure restores `results`; all legacy evaluation routes, deep links without receipts, corrupt receipts, changed inputs and changed release/evidence/screening bindings return to `scenario` with guidance.
+
+Exact reader mapping:
+
+| Internal group | Reader label | Fixed explanation |
+|---|---|---|
+| `passes_declared_constraints` | Meets scenario | No blocking issue appears in the current prepared evidence. |
+| `needs_investigation` | More evidence needed | A specialist check, infrastructure change, or evidence gap remains. |
+| `excluded` | Does not meet scenario | A declared constraint blocks this scenario in the current prepared evidence. |
+
+Every reader-facing name is `REGION_BY_ID[regionId].displayName`; candidate names, RegionId prefixes and domain-outcome labels never enter the name/accessibility/copy projection. Evidence qualification remains present in result trust copy and the source register.
+
+#### CTR-044 revision v0.13.2 — exact shipped normalization and total event closure
+
+This revision supersedes the earlier CTR-044 workflow/event definitions.
+
+```text
+type ShippedCoolingMethodV1 = air|evaporative|water_cooled|hybrid|unknown
+
+type ShippedScenarioInputV1 = exact {
+  name?:PlainText<120>
+  itCapacityMw:FiniteNumber|NumericText
+  pue:FiniteNumber|NumericText
+  utilizationRatio:FiniteNumber|NumericText
+  concurrencyRatio:FiniteNumber|NumericText
+  coolingMethod?:ShippedCoolingMethodV1
+  targetNetworkGbps?:FiniteNumber|NumericText
+  permanentJobs?:FiniteNumber|NumericText
+  regionalInvestmentNzdM?:FiniteNumber|NumericText
+}
+
+type ShippedNormalizedScenarioV1 = exact {
+  name:PlainText<120>; itCapacityMw:FiniteNumber(0,100000]
+  pue:FiniteNumber[1,5]; utilizationRatio:FiniteNumber[0,1]
+  concurrencyRatio:FiniteNumber[0,1]; coolingMethod:ShippedCoolingMethodV1
+  targetNetworkGbps:FiniteNumber[1,100000]
+  permanentJobs:FiniteNumber[0,100000]
+  regionalInvestmentNzdM:FiniteNumber[0,1000000]
+}
+
+type ShippedNormalizationOutcomeV1 =
+  | exact { status:"valid"; normalized:ShippedNormalizedScenarioV1;
+      canonicalBytes:Utf8Bytes; scenarioFingerprint:Sha256 }
+  | exact { status:"invalid"; field:one of the exact input keys; message:PlainText<240> }
+```
+
+`normalizeShippedScenarioV1` is the sole producer. It trims numeric text, rejects blank/non-finite/out-of-range values, applies only the shipped defaults (`name="Untitled scenario"`, `coolingMethod=hybrid`, network=100, jobs=50, investment=0), rounds numeric values to six decimal places, serializes the exact normalized record as canonical JSON, and sets `scenarioFingerprint=SHA-256(canonicalBytes)`. UI readiness additionally requires the original `name` to be non-blank and the normalized cooling value not `unknown`; this is a declaration gate, not a second numeric normalizer. Field rename/removal or cooling-vocabulary mutation fails contract compilation.
+
+The shipped adapter to the approved deterministic input is exact for the overlapping deterministic fields: `name`, location from `PreparedRegionBindingV1.regionId`, IT capacity, utilisation, PUE, cooling (`water_cooled` remains `water_cooled`), jobs and investment. Required broader fields not exposed by this hackathon form use declared preset `gridlens-demo-form-v1` values and origin proofs; the adapter cannot infer or accept them from user text. The shipped evaluator and adapter share golden normalized/calculation fixtures.
+
+type ShippedResultSnapshotV1 = exact {
+  schemaVersion:"gridlens.shipped-result.v1"
+  normalizedScenario:ShippedNormalizedScenarioV1
+  scenarioFingerprint:Sha256
+  region:PreparedRegionBindingV1
+  calculations:ScenarioCalculations
+  selectedAssessment:SiteAssessment
+  notices:Array<1..8,PlainText<500>>
+  analysisAsOf:LocalDate
+  resultSnapshotId:Sha256
+}
+
+`analysisAsOf` is captured from the prepared evidence snapshot selected for the run, never from the restoration clock. `resultSnapshotId` is SHA-256 of the canonical snapshot with only `resultSnapshotId` omitted. It is stored immutably with the receipt.
+
+type EvaluationRunCoreV1 = exact {
+  runId:SafeInteger; workflowGeneration:SafeInteger
+  scenarioFingerprint:Sha256; region:PreparedRegionBindingV1
+  analysisAsOf:LocalDate
+}
+type EvaluationRunReceiptV1 = exact {
+  schemaVersion:"gridlens.evaluation-receipt.v1"
+  run:EvaluationRunCoreV1; resultSnapshotId:Sha256
+}
+type EvaluationEventV1 =
+  | exact { type:"start"; expectedGeneration:SafeInteger; run:EvaluationRunCoreV1 }
+  | exact { type:"stage"; workflowGeneration:SafeInteger; runId:SafeInteger;
+      expectedStage:0|1; nextStage:1|2 }
+  | exact { type:"analysis_terminal"; workflowGeneration:SafeInteger;
+      runId:SafeInteger; outcome:exact { status:"ready"; snapshot:ShippedResultSnapshotV1 }
+        | exact { status:"failed"; guidance:PlainText<240> }
+        | exact { status:"cancelled" } }
+  | exact { type:"finish"; workflowGeneration:SafeInteger; runId:SafeInteger }
+  | exact { type:"invalidate"; expectedGeneration:SafeInteger;
+      invalidatedRunId?:SafeInteger; guidance?:PlainText<240> }
+  | exact { type:"restore"; expectedGeneration:SafeInteger;
+      receipt:EvaluationRunReceiptV1; snapshot:ShippedResultSnapshotV1 }
+```
+
+The reducer alone allocates the next generation. Every mutating event must match the current generation; run events must also match the current run. Current-run `failed` or `cancelled` cleans resources and returns to scenario (`failed` includes guidance); stale terminals are discarded.
+
+Restoration loads the immutable stored `ShippedResultSnapshotV1`, validates its canonical ID, receipt, scenario fingerprint, original `analysisAsOf` and every region/screening/evidence/release binding, and optionally differentially reruns pure `evaluateAt(snapshot.analysisAsOf, exact retained inputs)`. It never reads the current clock. Raw inputs normalizing to the same canonical bytes share the same fingerprint. Freshness-boundary, timezone and DST changes therefore cannot mutate a valid stored result.
+
+#### CTR-044 revision v0.13.3 — closed result graph and exact instant
+
+This revision replaces the four shorthand symbols and every `LocalDate analysisAsOf` occurrence above.
+
+```text
+type NumericText = ASCII string matching `^(0|[1-9][0-9]*)(\.[0-9]+)?$`
+  with 1..32 bytes and no sign, exponent, separators or surrounding whitespace
+type CanonicalUtf8Bytes = UTF-8 bytes of RFC 8785 canonical JSON
+
+type ShippedScenarioCalculationsV1 = exact {
+  addedPeakMw:FiniteNumber; annualEnergyGwh:FiniteNumber
+  concurrentDemandMw:FiniteNumber; maximumFlexibleLoadMw:FiniteNumber
+  formulaVersion:"gridlens-demo-1.0.0"
+}
+type ShippedAssessmentReasonV1 = exact {
+  code:"declared_exclusion_constraint"|"specialist_assessment_signal"|
+    "prepared_capacity_below_added_peak"|"prepared_evidence_incomplete"|
+    "declared_constraints_passed"
+  message:PlainText<500>
+}
+type ShippedSiteAssessmentV1 = exact {
+  candidateId:CandidateId; regionId:RegionId
+  domainOutcome:"excluded"|"specialist_assessment_required"|
+    "infrastructure_upgrade_required"|"insufficient_evidence"|"included"
+  presentationGroup:"passes_declared_constraints"|"needs_investigation"|"excluded"
+  capacityMarginMw:FiniteNumber
+  reasons:Array<1..8,ShippedAssessmentReasonV1>
+  screeningHash:Sha256; evidenceSnapshotId:Sha256
+}
+```
+
+`ShippedNormalizationOutcomeV1.canonicalBytes` is `CanonicalUtf8Bytes`. `permanentJobs` normalization accepts only an integer numeric value/text and emits `UInt64[0,100000]`; fractional jobs are invalid. Every other nonnegative numeric value uses deterministic decimal `round6(x)=floor(x*1_000_000+0.5)/1_000_000`, with equality, just-below and just-above half-way fixtures. `regionalInvestmentNzdM` adapts to `ScenarioDraftV2.investmentNzd` by exact decimal multiplication by 1,000,000 before canonicalization.
+
+The exact `gridlens-demo-form-v1` adapter emits: canonical name; selected location/geometry hash from the prepared binding; IT capacity; workload=`general`; utilisation percent=`utilizationRatio*100`; PUE; identical supported cooling kind; flexible workload percent=`concurrencyRatio*100`; backup generation/restriction=`unknown`; demand response=`unknown`; stage=`concept`; ownership=`unknown`; permanent jobs integer; investment NZD as above; waste heat=`none`; and an `OriginProofV2` for every emitted/defaulted field naming `gridlens-demo-form-v1`. No undeclared field is inferred.
+
+`ShippedResultSnapshotV1.calculations` is `ShippedScenarioCalculationsV1`; `selectedAssessment` is `ShippedSiteAssessmentV1`. The full CTR-044 transitive graph is a release-blocking contract-compile root.
+
+All `analysisAsOf` fields are `Instant`, canonicalized to an RFC 3339 UTC `Z` serialization with millisecond precision, and must equal the selected evidence snapshot's exact `asOf` instant byte-for-byte after the same canonicalization. The prepared demo evidence instant is `2026-07-31T12:00:00.000Z` (equivalent to 01 Aug 2026 00:00 NZST). Binding, run, snapshot, receipt and `evaluateAt` must use that identical instant; current clock and local-date reconstruction are forbidden.
+
+#### CTR-044 revision v0.13.4 — final exact replacements
+
+The following V2 types replace and retire the same-purpose V1 shipped input/normalized/binding/run/snapshot/receipt types above. No V1 workflow root is exported.
+
+```text
+type ShippedScenarioInputV2 = exact {
+  name:PlainText<120>
+  itCapacityMw:FiniteNumber|NumericText
+  pue:FiniteNumber|NumericText
+  utilizationRatio:FiniteNumber|NumericText
+  concurrencyRatio:FiniteNumber|NumericText
+  coolingMethod:air|evaporative|water_cooled|hybrid|unknown
+  targetNetworkGbps:FiniteNumber|NumericText
+  permanentJobs:UInt64|NumericText
+  regionalInvestmentNzdM:FiniteNumber|NumericText
+}
+type ShippedNormalizedScenarioV2 = exact {
+  name:PlainText<120>; itCapacityMw:FiniteNumber(0,100000]
+  pue:FiniteNumber[1,5]; utilizationRatio:FiniteNumber[0,1]
+  concurrencyRatio:FiniteNumber[0,1]
+  coolingMethod:air|evaporative|water_cooled|hybrid|unknown
+  targetNetworkGbps:FiniteNumber[1,100000]
+  permanentJobs:UInt64[0,100000]
+  regionalInvestmentNzdM:FiniteNumber[0,1000000]
+}
+type ShippedNormalizationOutcomeV2 =
+  | exact { status:"valid"; normalized:ShippedNormalizedScenarioV2;
+      canonicalBytes:CanonicalUtf8Bytes; scenarioFingerprint:Sha256 }
+  | exact { status:"invalid"; field:one of the exact input keys; message:PlainText<240> }
+
+type PreparedRegionBindingV2 = exact {
+  regionId:RegionId; candidateId:CandidateId
+  selectionGeneration:SafeInteger[1..9007199254740991]
+  screeningHash:Sha256; evidenceSnapshotId:Sha256
+  releaseManifestHash:Sha256; analysisAsOf:Instant
+}
+
+type ShippedPresetV1 = exact {
+  presetId:"gridlens-demo-form-v1"; version:"1.0.0"; presetHash:Sha256
+}
+type ShippedFieldOriginV1 =
+  | exact { kind:"user"; proof:OriginProofV2 with origin=user_assumption }
+  | exact { kind:"preset"; proof:OriginProofV2 with origin=versioned_preset;
+      preset:ShippedPresetV1 }
+type ShippedDeterministicAdapterOutputV1 = exact {
+  source:ShippedNormalizedScenarioV2
+  targetDraft:ScenarioDraftV2
+  targetNormalized:NormalizedScenarioV2
+  preset:ShippedPresetV1
+  originProofs:exact {
+    name:ShippedFieldOriginV1(kind=user); location:ShippedFieldOriginV1(kind=user)
+    itCapacityMw:ShippedFieldOriginV1(kind=user)
+    utilisationPercent:ShippedFieldOriginV1(kind=user); pue:ShippedFieldOriginV1(kind=user)
+    coolingMethod:ShippedFieldOriginV1(kind=user)
+    flexibleWorkloadPercent:ShippedFieldOriginV1(kind=user)
+    permanentJobs:ShippedFieldOriginV1(kind=user)
+    investmentNzd:ShippedFieldOriginV1(kind=user)
+    workloadType:ShippedFieldOriginV1(kind=preset)
+    backupGeneration:ShippedFieldOriginV1(kind=preset)
+    backupRestriction:ShippedFieldOriginV1(kind=preset)
+    demandResponse:ShippedFieldOriginV1(kind=preset)
+    stage:ShippedFieldOriginV1(kind=preset)
+    ownershipType:ShippedFieldOriginV1(kind=preset)
+    wasteHeatReuseClaim:ShippedFieldOriginV1(kind=preset)
+  }
+  adapterHash:Sha256
+}
+
+type EvaluationRunCoreV2 = exact {
+  runId:SafeInteger; workflowGeneration:SafeInteger
+  scenarioFingerprint:Sha256; region:PreparedRegionBindingV2
+  analysisAsOf:Instant
+}
+type ShippedResultSnapshotV2 = exact {
+  schemaVersion:"gridlens.shipped-result.v2"
+  normalizedScenario:ShippedNormalizedScenarioV2
+  scenarioFingerprint:Sha256; region:PreparedRegionBindingV2
+  calculations:ShippedScenarioCalculationsV1
+  selectedAssessment:ShippedSiteAssessmentV1
+  notices:Array<1..8,PlainText<500>>
+  analysisAsOf:Instant; resultSnapshotId:Sha256
+}
+type EvaluationRunReceiptV2 = exact {
+  schemaVersion:"gridlens.evaluation-receipt.v2"
+  run:EvaluationRunCoreV2; resultSnapshotId:Sha256
+}
+```
+
+`normalizeShippedScenarioV2` has no scenario-field defaults. Omitted/empty/`unknown` cooling is invalid or ineligible before evaluation; every supported explicit cooling value preserves `user_assumption` origin. Numeric text for jobs must match the integer subset `^(0|[1-9][0-9]*)$` before UInt64 bounds.
+
+The exact adapter output is a transitive CTR-044 root. Its preset hash covers the seven exact default fields/values declared in v0.13.3; user-entered overlapping fields are always `user_assumption`, never preset. The adapter hash covers source, target draft/normalized, preset and complete proof map.
+
+`PreparedRegionBindingV2.analysisAsOf` is copied from and equal to the resolved evidence snapshot canonical instant. `EvaluationRunCoreV2.analysisAsOf`, `ShippedResultSnapshotV2.analysisAsOf` and every receipt/evaluator use must equal `region.analysisAsOf`; all hashes include it. Workflow events/routes/storage use only V2 run, snapshot and receipt types.
+
+#### CTR-044 revision v0.13.5 — closed V2 workflow, event and route roots
+
+```text
+type EvaluationWorkflowV2 =
+  | exact { kind:"scenario"; workflowGeneration:SafeInteger;
+      guidance?:PlainText<240> }
+  | exact { kind:"evaluating"; workflowGeneration:SafeInteger;
+      run:EvaluationRunCoreV2; stage:0|1|2;
+      analysis:exact { status:"pending" }
+        | exact { status:"ready"; snapshot:ShippedResultSnapshotV2 } }
+  | exact { kind:"results"; workflowGeneration:SafeInteger;
+      receipt:EvaluationRunReceiptV2; snapshot:ShippedResultSnapshotV2 }
+
+type EvaluationEventV2 =
+  | exact { type:"start"; expectedGeneration:SafeInteger; run:EvaluationRunCoreV2 }
+  | exact { type:"stage"; workflowGeneration:SafeInteger; runId:SafeInteger;
+      expectedStage:0|1; nextStage:1|2 }
+  | exact { type:"analysis_terminal"; workflowGeneration:SafeInteger;
+      runId:SafeInteger; outcome:exact { status:"ready"; snapshot:ShippedResultSnapshotV2 }
+        | exact { status:"failed"; guidance:PlainText<240> }
+        | exact { status:"cancelled" } }
+  | exact { type:"finish"; workflowGeneration:SafeInteger; runId:SafeInteger }
+  | exact { type:"invalidate"; expectedGeneration:SafeInteger;
+      invalidatedRunId?:SafeInteger; guidance?:PlainText<240> }
+  | exact { type:"restore"; expectedGeneration:SafeInteger;
+      receipt:EvaluationRunReceiptV2; snapshot:ShippedResultSnapshotV2 }
+
+type EvaluationRouteV2 = exact {
+  page:"evaluation_v2"; receipt:EvaluationRunReceiptV2
+}
+type WorkflowRouteStateV4 =
+  | WorkflowRouteStateV3 excluding page="evaluation"
+  | EvaluationRouteV2
+type StoredEvaluationRouteV2 = exact {
+  schemaVersion:2; route:EvaluationRouteV2
+  snapshot:ShippedResultSnapshotV2
+  retainedInput:ShippedScenarioInputV2
+  payloadHash:Sha256
+}
+```
+
+`EvaluationWorkflowV2`, `EvaluationEventV2`, `WorkflowRouteStateV4` and `StoredEvaluationRouteV2` are the sole exported shipped orchestration roots. V1 workflow/event/route/storage roots and `WorkflowRouteStateV3.page="evaluation"` are compile-time forbidden. The stored payload hash covers route, snapshot and retained input. Restore first validates that hash, then the complete receipt/snapshot/input/evidence closure before dispatching `restore`; failure returns a fresh `scenario` state and does not preserve attacker-supplied guidance.
+
+#### CTR-044 revision v0.13.6 — effective master-root replacement
+
+```text
+type StoredPayloadV4 =
+  | StoredPayloadV3 excluding store="route"
+  | exact { store:"route"; value:WorkflowRouteStateV4 }
+  | exact { store:"evaluation_route"; value:StoredEvaluationRouteV2 }
+
+type StoredEnvelopeV4 =
+  | exact { schemaVersion:4; recordId:PlainText<160>;
+      revision:SafeInteger[1..9007199254740991]; createdAt:Instant; updatedAt:Instant;
+      state:"live"; payload:StoredPayloadV4; payloadHash:Sha256 }
+  | exact { schemaVersion:4; recordId:PlainText<160>;
+      revision:SafeInteger[1..9007199254740991];
+      store:"scenario"|"result"|"comparison"|"evidence"|"project_case"|
+        "impact_brief"|"site_profile"|"site_screening"|"trusted_visual"|
+        "research_cache"|"route"|"evaluation_route"|"prompt_history"|
+        "migration_receipt"|"operation_receipt"|"quarantine"|"preference";
+      createdAt:Instant; updatedAt:Instant; state:"tombstone"; deletedAt:Instant;
+      priorPayloadHash:Sha256 }
+
+type WorkflowRouteV4 = "map"|"scenario"|"evaluation_v2"|"comparison"|
+  "evidence"|"project_case"|"impact_brief"|"agent"|"sources"
+
+type GridLensPublicContractV4 = exact {
+  base:GridLensPublicContractV3 excluding workflowRoute
+  workflowRouteKind:WorkflowRouteV4
+  workflowRouteState:WorkflowRouteStateV4
+  evaluationWorkflow:EvaluationWorkflowV2
+  evaluationEvent:EvaluationEventV2
+  storedEnvelope:StoredEnvelopeV4
+  deterministic:GridLensDeterministicContractV3
+  adapterReceipt:DeterministicAdapterReceiptV3
+}
+```
+
+`GridLensPublicContractV4` is the sole effective public compile root for v0.13. `GridLensPublicContractV3`, `WorkflowRouteV3`, `WorkflowRouteStateV3`, `StoredPayloadV3` and `StoredEnvelopeV3` are accepted only as named migration inputs and cannot be imported by current UI, route, history or storage producers. The V3 migration adapter maps every non-evaluation route to V4, but always maps legacy `evaluation` to `scenario` with local migration guidance; it never synthesizes a V2 receipt. Build-time reachability must prove V2 workflow/event/route/stored-route roots are transitive children of V4 and that no current path reaches the legacy evaluation token.

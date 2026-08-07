@@ -40,7 +40,7 @@ export interface SiteCandidate {
 export type CoolingMethod =
   | "air"
   | "evaporative"
-  | "direct_liquid"
+  | "water_cooled"
   | "hybrid"
   | "unknown";
 

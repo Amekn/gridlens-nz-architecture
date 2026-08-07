@@ -427,16 +427,16 @@ export function NzMap({
                   cursor: "pointer",
                 }}
               >
-                {region.regionId} · {region.displayName}
+                {region.displayName}
               </button>
             ))}
           </div>
         </details>
       </div>
       <div className="map-legend" aria-label="Site assessment groups">
-        <span><i className="legend-dot pass" />Passes declared constraints</span>
-        <span><i className="legend-dot investigate" />Needs investigation</span>
-        <span><i className="legend-dot excluded" />Excluded</span>
+        <span title="No blocking issue appears in the current prepared evidence."><i className="legend-dot pass" />Meets scenario</span>
+        <span title="A specialist check, infrastructure change, or evidence gap remains."><i className="legend-dot investigate" />More evidence needed</span>
+        <span title="A declared constraint blocks this scenario in the current prepared evidence."><i className="legend-dot excluded" />Does not meet scenario</span>
       </div>
     </div>
   );

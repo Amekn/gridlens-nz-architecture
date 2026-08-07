@@ -32,14 +32,14 @@ const WATER_FACTORS_L_PER_KWH: Readonly<
 > = Object.freeze({
   air: [0.02, 0.1],
   evaporative: [0.7, 1.8],
-  direct_liquid: [0.1, 0.4],
+  water_cooled: [0.1, 0.4],
   hybrid: [0.2, 0.9],
 });
 
 const coolingLabel = (method: CoolingMethod): string => ({
   air: "Air cooling",
   evaporative: "Evaporative cooling",
-  direct_liquid: "Direct liquid cooling",
+  water_cooled: "Water cooling",
   hybrid: "Hybrid cooling",
   unknown: "Unknown cooling",
 })[method];
@@ -84,7 +84,7 @@ export function buildImpactPlots(
           `${assessment.candidate.preparedConnectionCapacityMw.toFixed(1)} MW`,
           "prepared",
         )
-      : missingRow("Prepared connection envelope", "Select a site marker"),
+      : missingRow("Prepared connection envelope", "Select a region marker"),
     presentRow("Added facility peak", calculations.addedPeakMw, powerMaximum, `${calculations.addedPeakMw.toFixed(1)} MW`, "calculated"),
     presentRow("Concurrent demand", calculations.concurrentDemandMw, powerMaximum, `${calculations.concurrentDemandMw.toFixed(1)} MW`, "calculated"),
   ];
